@@ -1,0 +1,41 @@
+# FastAPI and server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+alembic==1.13.1
+pgvector==0.2.4
+
+# Google Cloud AI Platform
+google-cloud-aiplatform==1.42.0
+google-cloud-storage==2.14.0
+google-auth==2.27.0
+
+# LangChain & LangGraph for Multi-Agent System
+langchain==0.1.0
+langchain-google-vertexai==0.1.0
+langgraph==0.0.26
+
+# PDF processing
+PyPDF2==3.0.1
+pdf2image==1.16.3
+
+# Image processing
+Pillow>=10.3.0
+opencv-python>=4.9.0.80
+
+# Utilities
+python-dotenv==1.0.0
+aiofiles==23.2.1
+pydantic==2.5.3
+pydantic-settings==2.1.0
+tenacity==8.2.3
+json-repair==0.28.4
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.26.0

@@ -1,0 +1,9 @@
+{
+  "/upload/page": "app/upload/page.js",
+  "/documents/page": "app/documents/page.js",
+  "/timeline/page": "app/timeline/page.js",
+  "/api/upload/route": "app/api/upload/route.js",
+  "/documents/[id]/page": "app/documents/[id]/page.js",
+  "/knowledge-graph/page": "app/knowledge-graph/page.js",
+  "/ask/page": "app/ask/page.js"
+}

@@ -1,0 +1,37 @@
+{
+  "name": "medrix-monorepo",
+  "version": "1.0.0",
+  "description": "Medrix - AI-Powered Medical History Management Platform",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=frontend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "cd backend && ./start.sh",
+    "build": "npm run build --workspace=frontend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "start": "npm run start --workspace=frontend",
+    "lint": "npm run lint --workspace=frontend",
+    "test": "npm run test --workspace=frontend && cd backend && pytest",
+    "test:frontend": "npm run test --workspace=frontend",
+    "test:backend": "cd backend && pytest",
+    "setup": "./scripts/setup.sh",
+    "clean": "rm -rf frontend/node_modules frontend/.next backend/venv backend/__pycache__"
+  },
+  "keywords": [
+    "medical",
+    "AI",
+    "MedGemma",
+    "document-extraction",
+    "healthcare"
+  ],
+  "author": "Medrix Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
