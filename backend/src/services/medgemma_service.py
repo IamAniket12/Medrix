@@ -28,39 +28,19 @@ class MedGemmaService:
         self.endpoint = None
         self._initialized = False
 
-        # Try to initialize AI Platform
+        # Vertex AI is initialised once at startup (main.py → init_vertex_ai()).
+        # Just create the endpoint reference here.
         try:
-            # Load credentials (SAME AS agent_orchestrator)
-            credentials = None
-            if settings.google_application_credentials:
-                from google.oauth2 import service_account
-
-                credentials = service_account.Credentials.from_service_account_file(
-                    settings.google_application_credentials
-                )
-                logger.info(
-                    f"✓ Loaded credentials from: {settings.google_application_credentials}"
-                )
-
-            # Initialize Vertex AI with credentials
-            aiplatform.init(
-                project=self.project,
-                location=self.location,
-                credentials=credentials,
-            )
-
-            # Initialize endpoint with full resource name (SAME AS agent_orchestrator)
             endpoint_resource_name = f"projects/{self.project}/locations/{self.location}/endpoints/{self.endpoint_id}"
             self.endpoint = aiplatform.Endpoint(endpoint_name=endpoint_resource_name)
-
             self._initialized = True
-            logger.info(f"✓ MedGemma service initialized successfully")
+            logger.info(f"[OK] MedGemma service initialized successfully")
             logger.info(f"  Project: {self.project}")
             logger.info(f"  Location: {self.location}")
             logger.info(f"  Endpoint ID: {self.endpoint_id[:20]}...")
         except Exception as e:
             logger.error(
-                f"❌ Could not initialize MedGemma service: {e}", exc_info=True
+                f"[ERR] Could not initialize MedGemma service: {e}", exc_info=True
             )
             logger.warning("   MedGemma service will return error responses.")
             self._initialized = False

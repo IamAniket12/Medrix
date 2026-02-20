@@ -153,22 +153,9 @@ class MedicalDocumentAgentOrchestrator:
         """
         self.settings = settings
 
-        # Initialize Vertex AI LLM with MedGemma endpoint
+        # Vertex AI is initialised once at startup (main.py → init_vertex_ai()).
+        # Just create the endpoint reference here.
         from google.cloud import aiplatform
-        from google.oauth2 import service_account
-
-        # Load credentials from service account file
-        credentials = None
-        if settings.google_application_credentials:
-            credentials = service_account.Credentials.from_service_account_file(
-                settings.google_application_credentials
-            )
-
-        aiplatform.init(
-            project=settings.google_cloud_project,
-            location=settings.vertex_ai_location,
-            credentials=credentials,
-        )
 
         self.endpoint = aiplatform.Endpoint(
             endpoint_name=f"projects/{settings.google_cloud_project}/locations/{settings.vertex_ai_location}/endpoints/{settings.medgemma_endpoint_id}"

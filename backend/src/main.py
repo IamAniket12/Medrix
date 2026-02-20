@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime
 
 from src.core.config import settings
+from src.core.config import init_vertex_ai
 from src.api import router
 from src.schemas.document import HealthCheck
 
@@ -58,12 +59,15 @@ async def health_check():
 async def startup_event():
     """Actions to perform on application startup."""
     print(f"\n{'='*60}")
-    print(f"🏥 {settings.app_name} v{settings.app_version}")
+    print(f"[MED] {settings.app_name} v{settings.app_version}")
     print(f"{'='*60}")
-    print(f"📡 Server running on http://{settings.host}:{settings.port}")
-    print(f"📚 API Documentation: http://{settings.host}:{settings.port}/docs")
-    print(f"🔌 API v1 Endpoint: http://{settings.host}:{settings.port}/api/v1")
+    print(f"[NET] Server running on http://{settings.host}:{settings.port}")
+    print(f"[DOC] API Documentation: http://{settings.host}:{settings.port}/docs")
+    print(f"[API] API v1 Endpoint: http://{settings.host}:{settings.port}/api/v1")
     print(f"{'='*60}\n")
+
+    # Initialise Vertex AI once for the whole process
+    init_vertex_ai()
 
 
 # Shutdown event

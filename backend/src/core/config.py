@@ -55,3 +55,47 @@ def get_settings() -> Settings:
 
 # Export settings instance
 settings = get_settings()
+
+
+def get_gcp_credentials():
+    """
+    Load Google Cloud service-account credentials from the path in settings.
+    Returns None if no path is configured (ADC / metadata-server will be used).
+    """
+    if not settings.google_application_credentials:
+        return None
+    from google.oauth2 import service_account
+
+    return service_account.Credentials.from_service_account_file(
+        settings.google_application_credentials
+    )
+
+
+_vertex_ai_initialized = False
+
+
+def init_vertex_ai() -> None:
+    """
+    Initialize Vertex AI exactly once for the whole process.
+
+    Call this from main.py startup_event so every service
+    (agent_orchestrator, embeddings_service, medgemma_service) shares the
+    same initialized SDK state without redundant credential loads.
+    """
+    global _vertex_ai_initialized
+    if _vertex_ai_initialized:
+        return
+
+    from google.cloud import aiplatform
+
+    credentials = get_gcp_credentials()
+    aiplatform.init(
+        project=settings.google_cloud_project,
+        location=settings.vertex_ai_location,
+        credentials=credentials,
+    )
+    _vertex_ai_initialized = True
+    print(
+        f"[GCP] Vertex AI initialized — project={settings.google_cloud_project} "
+        f"location={settings.vertex_ai_location}"
+    )

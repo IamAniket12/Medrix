@@ -1658,6 +1658,14 @@
         "documentation": {}
     },
     {
+        "label": "init_vertex_ai",
+        "importPath": "src.core.config",
+        "description": "src.core.config",
+        "isExtraImport": true,
+        "detail": "src.core.config",
+        "documentation": {}
+    },
+    {
         "label": "settings",
         "importPath": "src.core.config",
         "description": "src.core.config",
@@ -3764,7 +3772,25 @@
         "kind": 2,
         "importPath": "backend.src.core.config",
         "description": "backend.src.core.config",
-        "peekOfCode": "def get_settings() -> Settings:\n    \"\"\"Get cached settings instance.\"\"\"\n    return Settings()\n# Export settings instance\nsettings = get_settings()",
+        "peekOfCode": "def get_settings() -> Settings:\n    \"\"\"Get cached settings instance.\"\"\"\n    return Settings()\n# Export settings instance\nsettings = get_settings()\ndef get_gcp_credentials():\n    \"\"\"\n    Load Google Cloud service-account credentials from the path in settings.\n    Returns None if no path is configured (ADC / metadata-server will be used).\n    \"\"\"",
+        "detail": "backend.src.core.config",
+        "documentation": {}
+    },
+    {
+        "label": "get_gcp_credentials",
+        "kind": 2,
+        "importPath": "backend.src.core.config",
+        "description": "backend.src.core.config",
+        "peekOfCode": "def get_gcp_credentials():\n    \"\"\"\n    Load Google Cloud service-account credentials from the path in settings.\n    Returns None if no path is configured (ADC / metadata-server will be used).\n    \"\"\"\n    if not settings.google_application_credentials:\n        return None\n    from google.oauth2 import service_account\n    return service_account.Credentials.from_service_account_file(\n        settings.google_application_credentials",
+        "detail": "backend.src.core.config",
+        "documentation": {}
+    },
+    {
+        "label": "init_vertex_ai",
+        "kind": 2,
+        "importPath": "backend.src.core.config",
+        "description": "backend.src.core.config",
+        "peekOfCode": "def init_vertex_ai() -> None:\n    \"\"\"\n    Initialize Vertex AI exactly once for the whole process.\n    Call this from main.py startup_event so every service\n    (agent_orchestrator, embeddings_service, medgemma_service) shares the\n    same initialized SDK state without redundant credential loads.\n    \"\"\"\n    global _vertex_ai_initialized\n    if _vertex_ai_initialized:\n        return",
         "detail": "backend.src.core.config",
         "documentation": {}
     },
@@ -3773,7 +3799,16 @@
         "kind": 5,
         "importPath": "backend.src.core.config",
         "description": "backend.src.core.config",
-        "peekOfCode": "settings = get_settings()",
+        "peekOfCode": "settings = get_settings()\ndef get_gcp_credentials():\n    \"\"\"\n    Load Google Cloud service-account credentials from the path in settings.\n    Returns None if no path is configured (ADC / metadata-server will be used).\n    \"\"\"\n    if not settings.google_application_credentials:\n        return None\n    from google.oauth2 import service_account\n    return service_account.Credentials.from_service_account_file(",
+        "detail": "backend.src.core.config",
+        "documentation": {}
+    },
+    {
+        "label": "_vertex_ai_initialized",
+        "kind": 5,
+        "importPath": "backend.src.core.config",
+        "description": "backend.src.core.config",
+        "peekOfCode": "_vertex_ai_initialized = False\ndef init_vertex_ai() -> None:\n    \"\"\"\n    Initialize Vertex AI exactly once for the whole process.\n    Call this from main.py startup_event so every service\n    (agent_orchestrator, embeddings_service, medgemma_service) shares the\n    same initialized SDK state without redundant credential loads.\n    \"\"\"\n    global _vertex_ai_initialized\n    if _vertex_ai_initialized:",
         "detail": "backend.src.core.config",
         "documentation": {}
     },
@@ -4250,7 +4285,7 @@
         "kind": 6,
         "importPath": "backend.src.services.agent_orchestrator",
         "description": "backend.src.services.agent_orchestrator",
-        "peekOfCode": "class MedicalDocumentAgentOrchestrator:\n    \"\"\"Orchestrates multiple specialized agents for medical document analysis.\"\"\"\n    def __init__(self, settings):\n        \"\"\"\n        Initialize the agent orchestrator.\n        Args:\n            settings: Application settings\n        \"\"\"\n        self.settings = settings\n        # Initialize Vertex AI LLM with MedGemma endpoint",
+        "peekOfCode": "class MedicalDocumentAgentOrchestrator:\n    \"\"\"Orchestrates multiple specialized agents for medical document analysis.\"\"\"\n    def __init__(self, settings):\n        \"\"\"\n        Initialize the agent orchestrator.\n        Args:\n            settings: Application settings\n        \"\"\"\n        self.settings = settings\n        # Vertex AI is initialised once at startup (main.py → init_vertex_ai()).",
         "detail": "backend.src.services.agent_orchestrator",
         "documentation": {}
     },

@@ -39,23 +39,8 @@ class EmbeddingsService:
             return
 
         try:
-            # Load credentials if specified
-            credentials = None
-            if settings.google_application_credentials:
-                from google.oauth2 import service_account
-
-                credentials = service_account.Credentials.from_service_account_file(
-                    settings.google_application_credentials
-                )
-
-            # Initialize Vertex AI
-            aiplatform.init(
-                project=settings.google_cloud_project,
-                location=settings.vertex_ai_location,
-                credentials=credentials,
-            )
-
-            # Use Google's text-embedding-004 model (768 dimensions)
+            # Vertex AI is initialised once at startup (main.py → init_vertex_ai()).
+            # Just load the embedding model here.
             self.model = TextEmbeddingModel.from_pretrained("text-embedding-004")
             self._initialized = True
             logger.info("Embeddings service initialized successfully")
@@ -63,7 +48,6 @@ class EmbeddingsService:
         except Exception as e:
             logger.error(f"Failed to initialize embeddings service: {str(e)}")
             logger.warning("Embeddings service will operate in fallback mode")
-            # Don't raise - allow app to start but embeddings won't work
             self._initialized = False
 
     def generate_embedding(self, text: str) -> List[float]:
