@@ -55,8 +55,17 @@ export default function AskAIPage() {
   const [showPreview, setShowPreview] = useState(false)
   const [previewDoc, setPreviewDoc] = useState<{ id: string; name: string; url: string } | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
+  const [user, setUser] = useState<{ id: string; name: string; email: string } | null>(null)
+  const [authChecked, setAuthChecked] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Auth check
+  useEffect(() => {
+    const raw = localStorage.getItem('medrix_user')
+    setUser(raw ? JSON.parse(raw) : null)
+    setAuthChecked(true)
+  }, [])
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -65,8 +74,8 @@ export default function AskAIPage() {
 
   // Auto-focus input on mount
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+    if (authChecked && user) inputRef.current?.focus()
+  }, [authChecked, user])
 
   // Handle document preview
   const openDocumentPreview = async (docId: string, docName: string) => {
@@ -76,7 +85,7 @@ export default function AskAIPage() {
 
     try {
       // Fetch document details to get file path
-      const detailsRes = await fetch(`${API_BASE_URL}/clinical/documents/demo_user_001/${docId}`)
+      const detailsRes = await fetch(`${API_BASE_URL}/clinical/documents/${user?.id || 'demo_user_001'}/${docId}`)
       if (!detailsRes.ok) throw new Error('Failed to fetch document details')
       
       const docDetails = await detailsRes.json()
@@ -123,7 +132,7 @@ export default function AskAIPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: 'demo_user_001',
+          user_id: user?.id || 'demo_user_001',
           question: inputValue,
           conversation_history: messages.slice(-5), // Last 5 messages for context
         }),
@@ -198,6 +207,31 @@ export default function AskAIPage() {
     } catch {
       return dateStr
     }
+  }
+
+  if (!authChecked) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #fffbf7 0%, #fef3ec 40%, #fff6f0 70%, #fffbf7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '40px', height: '40px', border: '3px solid rgba(249,115,22,0.2)', borderTop: '3px solid #f97316', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+        <style jsx>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #fffbf7 0%, #fef3ec 40%, #fff6f0 70%, #fffbf7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+        <div style={{ maxWidth: '440px', width: '100%', background: '#ffffff', border: '1.5px solid rgba(0,0,0,0.06)', borderRadius: '24px', padding: '48px 40px', textAlign: 'center', boxShadow: '0 8px 40px rgba(0,0,0,0.07)' }}>
+          <div style={{ fontSize: '64px', marginBottom: '20px' }}>🤖</div>
+          <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#1c1917', marginBottom: '10px' }}>Sign in to use MediBot</h2>
+          <p style={{ fontSize: '15px', color: '#78716c', marginBottom: '32px', lineHeight: 1.6 }}>MediBot uses your personal medical history to answer questions. Please sign in to continue.</p>
+          <button onClick={() => router.push('/signin')} style={{ padding: '13px 32px', background: 'linear-gradient(135deg, #f97316 0%, #fb7185 100%)', border: 'none', borderRadius: '12px', color: 'white', fontSize: '15px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 16px rgba(249,115,22,0.3)', width: '100%' }}>
+            Sign In
+          </button>
+          <p style={{ marginTop: '16px', fontSize: '13px', color: '#a8a29e' }}>Don&apos;t have an account? <button onClick={() => router.push('/signin')} style={{ background: 'none', border: 'none', color: '#f97316', fontWeight: 700, cursor: 'pointer', fontSize: '13px', padding: 0 }}>Create one</button></p>
+        </div>
+      </div>
+    )
   }
 
   return (

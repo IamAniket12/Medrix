@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 
 const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`;
 const API_ROOT_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -158,7 +159,8 @@ export default function MedicalIDPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string>(() => {
+  const [authChecked, setAuthChecked] = useState(false);
+  const [userId, setUserId] = useState<string | null>(() => {
     try {
       const stored = localStorage.getItem('medrix_user');
       if (stored) {
@@ -166,10 +168,11 @@ export default function MedicalIDPage() {
         if (u?.id) return u.id;
       }
     } catch {}
-    return 'demo_user_001';
+    return null;
   });
 
   useEffect(() => {
+    setAuthChecked(true);
     const onAuthChange = () => {
       try {
         const stored = localStorage.getItem('medrix_user');
@@ -184,6 +187,7 @@ export default function MedicalIDPage() {
   }, []);
 
   const fetchCard = useCallback(async () => {
+    if (!userId) return;
     try {
       const res = await fetch(`${API_BASE_URL}/medical-id/${userId}/card`);
       if (res.ok) setPermanentCard(await res.json());
@@ -191,6 +195,7 @@ export default function MedicalIDPage() {
   }, [userId]);
 
   const fetchSummaries = useCallback(async () => {
+    if (!userId) return;
     try {
       const res = await fetch(`${API_BASE_URL}/medical-id/${userId}/summaries`);
       if (res.ok) setSummaries(await res.json());
@@ -200,6 +205,7 @@ export default function MedicalIDPage() {
   useEffect(() => { fetchCard(); fetchSummaries(); }, [fetchCard, fetchSummaries]);
 
   const regenerateCard = async () => {
+    if (!userId) return;
     setCardLoading(true); setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/medical-id/${userId}/card/regenerate`, { method: 'POST' });
@@ -210,6 +216,7 @@ export default function MedicalIDPage() {
   };
 
   const generateSummary = async () => {
+    if (!userId) return;
     setSummaryLoading(true); setError(null);
     try {
       const res = await fetch(`${API_BASE_URL}/medical-id/${userId}/summary`, {
@@ -227,6 +234,33 @@ export default function MedicalIDPage() {
     if (!permanentCard) return;
     window.open(`/medical-id/view/${userId}`, '_blank');
   };
+
+  const router = useRouter();
+
+  if (!authChecked) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #fffbf7 0%, #fef3ec 40%, #fff6f0 70%, #fffbf7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '40px', height: '40px', border: '3px solid rgba(249,115,22,0.2)', borderTop: '3px solid #f97316', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+        <style jsx>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (!userId) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #fffbf7 0%, #fef3ec 40%, #fff6f0 70%, #fffbf7 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+        <div style={{ maxWidth: '440px', width: '100%', background: '#ffffff', border: '1.5px solid rgba(0,0,0,0.06)', borderRadius: '24px', padding: '48px 40px', textAlign: 'center', boxShadow: '0 8px 40px rgba(0,0,0,0.07)' }}>
+          <div style={{ fontSize: '64px', marginBottom: '20px' }}>🪪</div>
+          <h2 style={{ fontSize: '26px', fontWeight: 800, color: '#1c1917', marginBottom: '10px' }}>Sign in to view your Medical ID</h2>
+          <p style={{ fontSize: '15px', color: '#78716c', marginBottom: '32px', lineHeight: 1.6 }}>Your Medical ID contains sensitive health information. Please sign in to access it.</p>
+          <button onClick={() => router.push('/signin')} style={{ padding: '13px 32px', background: 'linear-gradient(135deg, #f97316 0%, #fb7185 100%)', border: 'none', borderRadius: '12px', color: 'white', fontSize: '15px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 16px rgba(249,115,22,0.3)', width: '100%' }}>
+            Sign In
+          </button>
+          <p style={{ marginTop: '16px', fontSize: '13px', color: '#a8a29e' }}>Don&apos;t have an account? <button onClick={() => router.push('/signin')} style={{ background: 'none', border: 'none', color: '#f97316', fontWeight: 700, cursor: 'pointer', fontSize: '13px', padding: 0 }}>Create one</button></p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
