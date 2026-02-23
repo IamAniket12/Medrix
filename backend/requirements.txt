@@ -5,9 +5,9 @@ python-multipart==0.0.6
 starlette==0.35.1
 
 # Database
-SQLAlchemy==2.0.25
+SQLAlchemy==2.0.36
 psycopg2-binary==2.9.9
-alembic==1.13.1
+alembic==1.14.0
 pgvector==0.2.4
 
 # Google Cloud AI Platform
