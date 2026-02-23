@@ -1,7 +1,6 @@
 [build]
-  base = "frontend"
-  command = "npm install && npm run build"
-  publish = ".next"
+  command = "cd frontend && npm ci && npm run build"
+  publish = "frontend/.next"
 
 [build.environment]
   NODE_VERSION = "20"
