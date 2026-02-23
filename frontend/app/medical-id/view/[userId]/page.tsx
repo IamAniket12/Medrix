@@ -145,7 +145,7 @@ export default function EmergencyViewPage() {
               <div style={{ marginBottom: info.critical_conditions.length > 0 ? '16px' : '0' }}>
                 <div style={{ fontSize: '13px', fontWeight: 700, color: '#d32f2f', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>⚠️ Life-Threatening Allergies</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {info.life_threatening_allergies.map((allergy, idx) => (
+                  {Array.from(new Set(info.life_threatening_allergies)).map((allergy, idx) => (
                     <div key={idx} style={{ background: '#ffebee', border: '2px solid #ef5350', borderRadius: '8px', padding: '8px 14px', fontSize: '14px', fontWeight: 700, color: '#b71c1c' }}>
                       {allergy}
                     </div>
@@ -158,7 +158,7 @@ export default function EmergencyViewPage() {
               <div>
                 <div style={{ fontSize: '13px', fontWeight: 700, color: '#f57c00', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>🏥 Critical Conditions</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {info.critical_conditions.map((condition, idx) => (
+                  {Array.from(new Set(info.critical_conditions)).map((condition, idx) => (
                     <div key={idx} style={{ background: 'white', border: '2px solid #ff9800', borderRadius: '8px', padding: '8px 14px', fontSize: '14px', fontWeight: 600, color: '#e65100' }}>
                       {condition}
                     </div>

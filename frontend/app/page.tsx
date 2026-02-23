@@ -6,13 +6,31 @@ import { useState, useEffect } from 'react';
 export default function Home() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isHovered, setIsHovered] = useState(false);
+  const [cardName, setCardName] = useState('Aniket Dixit');
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       setMousePosition({ x: e.clientX, y: e.clientY });
     };
     window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+
+    // Read signed-in user from localStorage
+    const updateCardName = () => {
+      try {
+        const stored = localStorage.getItem('medrix_user');
+        if (stored) {
+          const u = JSON.parse(stored);
+          if (u?.name) setCardName(u.name);
+        }
+      } catch {}
+    };
+    updateCardName();
+    window.addEventListener('medrix_auth_change', updateCardName);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('medrix_auth_change', updateCardName);
+    };
   }, []);
 
   const features = [
@@ -89,7 +107,7 @@ export default function Home() {
                     <div style={{ width: '68%', height: '58%', border: '1.5px solid rgba(0,0,0,0.15)', borderRadius: '2px' }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: '22px', fontWeight: 700, color: 'white', marginBottom: '7px' }}>Aniket Dixit</div>
+                    <div style={{ fontSize: '22px', fontWeight: 700, color: 'white', marginBottom: '7px' }}>{cardName}</div>
                     <div style={{ display: 'flex', gap: '20px', fontSize: '12px', color: 'rgba(255,255,255,0.55)' }}>
                       <div><div style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '2px' }}>Blood Type</div><div style={{ fontSize: '15px', fontWeight: 700, color: '#fda4af' }}>O+</div></div>
                       <div><div style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '2px' }}>DOB</div><div style={{ fontSize: '15px', fontWeight: 600, color: 'rgba(255,255,255,0.88)' }}>03/15/1985</div></div>

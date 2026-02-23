@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const USER_ID = 'demo_user_001';
 const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 interface PermanentCard {
@@ -158,27 +157,51 @@ export default function MedicalIDPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('medrix_user');
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u?.id) return u.id;
+      }
+    } catch {}
+    return 'demo_user_001';
+  });
+
+  useEffect(() => {
+    const onAuthChange = () => {
+      try {
+        const stored = localStorage.getItem('medrix_user');
+        if (stored) {
+          const u = JSON.parse(stored);
+          if (u?.id) setUserId(u.id);
+        }
+      } catch {}
+    };
+    window.addEventListener('medrix_auth_change', onAuthChange);
+    return () => window.removeEventListener('medrix_auth_change', onAuthChange);
+  }, []);
 
   const fetchCard = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/medical-id/${USER_ID}/card`);
+      const res = await fetch(`${API_BASE_URL}/medical-id/${userId}/card`);
       if (res.ok) setPermanentCard(await res.json());
     } catch { /* no card yet */ }
-  }, []);
+  }, [userId]);
 
   const fetchSummaries = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/medical-id/${USER_ID}/summaries`);
+      const res = await fetch(`${API_BASE_URL}/medical-id/${userId}/summaries`);
       if (res.ok) setSummaries(await res.json());
     } catch { /* empty */ }
-  }, []);
+  }, [userId]);
 
   useEffect(() => { fetchCard(); fetchSummaries(); }, [fetchCard, fetchSummaries]);
 
   const regenerateCard = async () => {
     setCardLoading(true); setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/medical-id/${USER_ID}/card/regenerate`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/medical-id/${userId}/card/regenerate`, { method: 'POST' });
       if (!res.ok) throw new Error('Failed to regenerate card');
       setPermanentCard(await res.json());
     } catch (e) { setError(e instanceof Error ? e.message : 'Something went wrong'); }
@@ -188,7 +211,7 @@ export default function MedicalIDPage() {
   const generateSummary = async () => {
     setSummaryLoading(true); setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/medical-id/${USER_ID}/summary`, {
+      const res = await fetch(`${API_BASE_URL}/medical-id/${userId}/summary`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expiration_minutes: 60 }),
       });
@@ -201,7 +224,7 @@ export default function MedicalIDPage() {
 
   const viewEmergencyPage = () => {
     if (!permanentCard) return;
-    window.open(`/medical-id/view/${USER_ID}`, '_blank');
+    window.open(`/medical-id/view/${userId}`, '_blank');
   };
 
   return (
