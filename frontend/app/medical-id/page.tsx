@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`;
+const API_ROOT_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 interface PermanentCard {
   id: string;
@@ -136,7 +137,7 @@ function SummaryRow({ summary }: { summary: DoctorSummary }) {
           <div style={{ fontSize: '12px', color: '#a8a29e', marginTop: '2px' }}>{dateStr} at {timeStr}</div>
         </div>
       </div>
-      <button onClick={() => window.open(`http://localhost:8000${summary.pdf_url}`, '_blank')} style={{ padding: '9px 16px', borderRadius: '10px', background: 'linear-gradient(135deg, #f97316, #fb7185)', border: 'none', color: 'white', fontWeight: '600', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(249,115,22,0.25)', transition: 'all 0.3s ease' }}
+      <button onClick={() => window.open(`${API_ROOT_URL}${summary.pdf_url}`, '_blank')} style={{ padding: '9px 16px', borderRadius: '10px', background: 'linear-gradient(135deg, #f97316, #fb7185)', border: 'none', color: 'white', fontWeight: '600', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(249,115,22,0.25)', transition: 'all 0.3s ease' }}
         onMouseEnter={(e) => {
           e.currentTarget.style.transform = 'translateY(-2px)'
           e.currentTarget.style.boxShadow = '0 6px 16px rgba(249,115,22,0.35)'

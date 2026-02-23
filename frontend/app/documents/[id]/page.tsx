@@ -56,8 +56,9 @@ export default function DocumentDetailPage() {
   const fetchDocumentDetails = async () => {
     try {
       setLoading(true);
+      const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`;
       const response = await fetch(
-        `http://localhost:8000/api/v1/clinical/documents/demo_user_001/${documentId}`
+        `${API_BASE_URL}/clinical/documents/demo_user_001/${documentId}`
       );
 
       if (!response.ok) {
@@ -68,7 +69,7 @@ export default function DocumentDetailPage() {
       setData(result);
       
       if (result.document.file_path) {
-        const viewUrl = `http://localhost:8000/api/v1/files/view/${result.document.file_path}`;
+        const viewUrl = `${API_BASE_URL}/files/view/${result.document.file_path}`;
         setFileUrl(viewUrl);
       }
     } catch (err) {

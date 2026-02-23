@@ -34,9 +34,10 @@ export default function SignInPage() {
 
     setLoading(true);
     try {
+      const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`;
       const endpoint = mode === 'login'
-        ? 'http://localhost:8000/api/v1/users/login'
-        : 'http://localhost:8000/api/v1/users/register';
+        ? `${API_BASE}/users/login`
+        : `${API_BASE}/users/register`;
 
       const body = mode === 'login'
         ? { email: email.trim() }

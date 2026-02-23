@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { DocumentPlusIcon, CheckCircleIcon, ArrowUpTrayIcon } from '@heroicons/react/24/outline'
 
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`
+
 interface UploadResult {
   success: boolean
   job_id?: string
@@ -65,7 +67,7 @@ export default function UploadPage() {
   const pollProgress = async (jobId: string) => {
     try {
       console.log(`[Progress] Polling for job: ${jobId}`)
-      const response = await fetch(`http://localhost:8000/api/v1/clinical/documents/progress/${jobId}`)
+      const response = await fetch(`${API_BASE_URL}/clinical/documents/progress/${jobId}`)
       if (response.ok) {
         const progressData = await response.json()
         console.log('[Progress] Received update:', progressData)
@@ -143,7 +145,7 @@ export default function UploadPage() {
       formData.append('user_id', user?.id || 'demo_user_001')
 
       console.log('[Upload] Sending request...')
-      const response = await fetch('http://localhost:8000/api/v1/clinical/documents/upload', {
+      const response = await fetch(`${API_BASE_URL}/clinical/documents/upload`, {
         method: 'POST',
         body: formData,
       })

@@ -293,7 +293,8 @@ export default function KnowledgeGraphPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/knowledge-graph/demo_user_001");
+      const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`;
+      const res = await fetch(`${API_BASE_URL}/knowledge-graph/demo_user_001`);
       if (!res.ok) throw new Error(`Server error: ${res.status}`);
       const data: KGData = await res.json();
       if (!data.nodes.length) {

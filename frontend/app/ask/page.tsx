@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`
 import { 
   PaperAirplaneIcon, 
   DocumentTextIcon,
@@ -74,14 +76,14 @@ export default function AskAIPage() {
 
     try {
       // Fetch document details to get file path
-      const detailsRes = await fetch(`http://localhost:8000/api/v1/clinical/documents/demo_user_001/${docId}`)
+      const detailsRes = await fetch(`${API_BASE_URL}/clinical/documents/demo_user_001/${docId}`)
       if (!detailsRes.ok) throw new Error('Failed to fetch document details')
       
       const docDetails = await detailsRes.json()
       const filePath = docDetails.document.file_path
 
       // Use the file view URL directly (backend returns 302 redirect to signed URL)
-      const viewUrl = `http://localhost:8000/api/v1/files/view/${encodeURIComponent(filePath)}`
+      const viewUrl = `${API_BASE_URL}/files/view/${encodeURIComponent(filePath)}`
       setPreviewDoc({ id: docId, name: docName, url: viewUrl })
     } catch (error) {
       console.error('Error loading document preview:', error)
@@ -115,7 +117,7 @@ export default function AskAIPage() {
 
     try {
       // Call backend RAG endpoint
-      const response = await fetch('http://localhost:8000/api/v1/chat/ask', {
+      const response = await fetch(`${API_BASE_URL}/chat/ask`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

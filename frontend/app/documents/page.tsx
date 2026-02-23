@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`;
+
 interface DocumentSummary {
   id: string;
   filename: string;
@@ -71,7 +73,7 @@ export default function DocumentsPage() {
     try {
       setLoading(true);
       const id = userId || user?.id;
-      const response = await fetch(`http://localhost:8000/api/v1/clinical/documents/${id}`);
+      const response = await fetch(`${API_BASE_URL}/clinical/documents/${id}`);
       
       if (!response.ok) {
         throw new Error('Failed to fetch documents');

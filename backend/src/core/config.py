@@ -38,7 +38,12 @@ class Settings(BaseSettings):
     allowed_extensions: set = {".pdf", ".jpg", ".jpeg", ".png"}
 
     # CORS Settings
-    cors_origins: list = ["http://localhost:3000", "http://localhost:3001"]
+    cors_origins: list = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://*.netlify.app",
+        "https://*.netlify.com",
+    ]
     cors_allow_credentials: bool = True
     cors_allow_methods: list = ["*"]
     cors_allow_headers: list = ["*"]
