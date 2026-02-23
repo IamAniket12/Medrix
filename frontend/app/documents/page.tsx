@@ -104,7 +104,7 @@ export default function DocumentsPage() {
     ? documents 
     : documents.filter(doc => doc.document_type === filterType);
 
-  const documentTypes = ['all', ...Array.from(new Set(documents.map(d => d.document_type).filter(Boolean)))];
+  const documentTypes = ['all', ...Array.from(new Set(documents.map(d => d.document_type).filter((t): t is string => t !== null)))];
 
   if (!authChecked || (loading && !user)) {
     return (
@@ -152,7 +152,7 @@ export default function DocumentsPage() {
           <div style={{ fontSize: '64px', marginBottom: '24px' }}>⚠️</div>
           <h2 style={{ fontSize: '24px', fontWeight: 700, color: '#1c1917', marginBottom: '12px' }}>Error Loading Documents</h2>
           <p style={{ fontSize: '15px', color: '#78716c', marginBottom: '28px' }}>{error}</p>
-          <button onClick={fetchDocuments} style={{ padding: '12px 28px', background: 'linear-gradient(135deg, #f97316 0%, #fb7185 100%)', border: 'none', borderRadius: '12px', color: 'white', fontSize: '15px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 16px rgba(249,115,22,0.3)' }}>
+          <button onClick={() => fetchDocuments()} style={{ padding: '12px 28px', background: 'linear-gradient(135deg, #f97316 0%, #fb7185 100%)', border: 'none', borderRadius: '12px', color: 'white', fontSize: '15px', fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 16px rgba(249,115,22,0.3)' }}>
             Try Again
           </button>
         </div>
