@@ -42,8 +42,6 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:3001",
         "https://medrix.netlify.app",
-        "https://*.netlify.app",
-        "https://*.netlify.com",
     ]
     cors_allow_credentials: bool = True
     cors_allow_methods: list = ["*"]
