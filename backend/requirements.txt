@@ -2,44 +2,73 @@
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-multipart==0.0.6
+starlette==0.35.1
 
 # Database
-sqlalchemy==2.0.25
+SQLAlchemy==2.0.25
 psycopg2-binary==2.9.9
 alembic==1.13.1
 pgvector==0.2.4
 
 # Google Cloud AI Platform
-google-cloud-aiplatform>=1.42.1,<2.0.0
-google-cloud-storage==2.14.0
-google-auth==2.27.0
+google-cloud-aiplatform==1.137.0
+google-cloud-storage==2.19.0
+google-cloud-bigquery==3.40.0
+google-cloud-core==2.5.0
+google-cloud-resource-manager==1.16.0
+google-auth==2.38.0
+google-api-core==2.29.0
+google-resumable-media==2.8.0
+google-crc32c==1.8.0
+googleapis-common-protos==1.72.0
+grpc-google-iam-v1==0.14.3
+grpcio==1.78.0
+grpcio-status==1.62.3
+proto-plus==1.27.1
+protobuf==4.25.8
+shapely==2.1.2
 
 # LangChain & LangGraph for Multi-Agent System
-langchain==0.1.0
-langchain-google-vertexai==0.1.0
-langgraph==0.0.26
+langchain==1.2.10
+langchain-core==1.2.11
+langchain-google-vertexai==3.2.2
+langgraph==1.0.8
+langgraph-checkpoint==4.0.0
+langgraph-prebuilt==1.0.7
+langsmith==0.7.1
 
 # PDF processing
 PyPDF2==3.0.1
 pdf2image==1.16.3
 
 # Image processing
-Pillow>=10.3.0
-opencv-python>=4.9.0.80
+Pillow==12.1.1
+opencv-python==4.13.0.92
 
 # PDF and QR code generation
-reportlab==4.0.9
-qrcode[pil]==7.4.2
+reportlab==4.4.10
+qrcode[pil]==8.2
 
 # Utilities
 python-dotenv==1.0.0
 aiofiles==23.2.1
-pydantic==2.5.3
+pydantic==2.12.5
 pydantic-settings==2.1.0
+pydantic_core==2.41.5
 tenacity==8.2.3
-json-repair==0.28.4
+json_repair==0.28.4
+aiohttp==3.13.3
+requests==2.32.5
+PyYAML==6.0.3
+cachetools==5.5.2
+pyasn1-modules==0.4.2
+rsa==4.9.1
+numpy==2.4.2
+pyarrow==22.0.0
+packaging==26.0
+typing_extensions==4.15.0
 
 # Testing
-pytest==7.4.3
+pytest==8.4.2
 pytest-asyncio==0.21.1
-httpx==0.26.0
+httpx==0.28.1
