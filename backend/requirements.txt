@@ -10,7 +10,7 @@ alembic==1.13.1
 pgvector==0.2.4
 
 # Google Cloud AI Platform
-google-cloud-aiplatform==1.42.0
+google-cloud-aiplatform>=1.42.1,<2.0.0
 google-cloud-storage==2.14.0
 google-auth==2.27.0
 
