@@ -3,42 +3,36 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 from google.cloud import storage
-from google.oauth2 import service_account
 from datetime import timedelta
-import os
 
-from src.core.config import settings
+from src.core.config import settings, get_gcp_credentials
 
 router = APIRouter(prefix="/files", tags=["files"])
 
 
 def get_gcs_client():
     """
-    Initialize GCS client with explicit credentials.
-    Enterprise best practice: Explicit credential management.
+    Initialize GCS client using centralized credential loading.
+    Supports both GOOGLE_APPLICATION_CREDENTIALS_JSON (Railway/cloud)
+    and GOOGLE_APPLICATION_CREDENTIALS file path (local dev).
     """
-    credentials_path = settings.google_application_credentials
+    credentials = get_gcp_credentials()
 
-    if not credentials_path:
-        raise ValueError(
-            "GOOGLE_APPLICATION_CREDENTIALS not configured in settings. "
-            "Please set it in your .env file."
-        )
+    if credentials is None:
+        # Fall back to Application Default Credentials
+        return storage.Client(project=settings.google_cloud_project)
 
-    if not os.path.exists(credentials_path):
-        raise FileNotFoundError(
-            f"Service account file not found at: {credentials_path}"
-        )
+    # Add GCS scope if not already present
+    from google.auth.transport.requests import Request
+    import google.auth
 
-    # Explicitly load credentials from service account file
-    credentials = service_account.Credentials.from_service_account_file(
-        credentials_path, scopes=["https://www.googleapis.com/auth/cloud-platform"]
+    scoped = (
+        credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
+        if hasattr(credentials, "with_scopes")
+        else credentials
     )
 
-    # Initialize client with explicit credentials
-    return storage.Client(
-        credentials=credentials, project=settings.google_cloud_project
-    )
+    return storage.Client(credentials=scoped, project=settings.google_cloud_project)
 
 
 @router.get("/view/{file_path:path}")
@@ -79,34 +73,10 @@ async def get_file_url(file_path: str):
 
     except HTTPException:
         raise
-    except ValueError as e:
-        # Configuration error
-        print(f"❌ Configuration Error: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "GCS credentials not configured",
-                "message": str(e),
-                "action": "Set GOOGLE_APPLICATION_CREDENTIALS environment variable",
-            },
-        )
-    except FileNotFoundError as e:
-        # Credentials file missing
-        print(f"❌ Credentials File Error: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "error": "Service account file not found",
-                "message": str(e),
-                "action": "Check GOOGLE_APPLICATION_CREDENTIALS path",
-            },
-        )
     except Exception as e:
-        # Unexpected error
         print(f"❌ GCS Error: {str(e)}")
         print(f"   File path: {file_path}")
         print(f"   Bucket: {settings.gcs_bucket_name}")
-
         raise HTTPException(
             status_code=500,
             detail={

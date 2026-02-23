@@ -2,11 +2,9 @@
 Cloud storage service for handling file uploads to Google Cloud Storage.
 """
 
-import os
 from typing import Optional, BinaryIO
 from google.cloud import storage
-from google.oauth2 import service_account
-from src.core.config import Settings
+from src.core.config import Settings, get_gcp_credentials
 from src.utils.file_utils import generate_unique_filename
 
 
@@ -30,35 +28,33 @@ class StorageService:
 
     def _init_gcs(self) -> None:
         """
-        Initialize Google Cloud Storage with explicit credentials.
-        Enterprise best practice: Explicit credential management.
+        Initialize Google Cloud Storage.
+        Supports GOOGLE_APPLICATION_CREDENTIALS_JSON (Railway/cloud)
+        and GOOGLE_APPLICATION_CREDENTIALS file path (local dev).
         """
         try:
             if not self.bucket_name:
-                raise ValueError("GCS_BUCKET_NAME not configured in .env")
+                raise ValueError("GCS_BUCKET_NAME not configured")
 
-            # Get credentials path
-            credentials_path = self.settings.google_application_credentials
-            if not credentials_path:
-                raise ValueError(
-                    "GOOGLE_APPLICATION_CREDENTIALS not configured in .env"
+            credentials = get_gcp_credentials()
+
+            if credentials is not None:
+                scoped = (
+                    credentials.with_scopes(
+                        ["https://www.googleapis.com/auth/cloud-platform"]
+                    )
+                    if hasattr(credentials, "with_scopes")
+                    else credentials
                 )
-
-            if not os.path.exists(credentials_path):
-                raise FileNotFoundError(
-                    f"Service account file not found at: {credentials_path}"
+                self.client = storage.Client(
+                    credentials=scoped, project=self.settings.google_cloud_project
                 )
+                print(f"✓ GCS initialized with service account credentials")
+            else:
+                # Fall back to Application Default Credentials
+                self.client = storage.Client(project=self.settings.google_cloud_project)
+                print(f"✓ GCS initialized with Application Default Credentials")
 
-            # Explicitly load credentials from service account file
-            credentials = service_account.Credentials.from_service_account_file(
-                credentials_path,
-                scopes=["https://www.googleapis.com/auth/cloud-platform"],
-            )
-
-            # Initialize client with explicit credentials
-            self.client = storage.Client(
-                credentials=credentials, project=self.settings.google_cloud_project
-            )
             self.bucket = self.client.bucket(self.bucket_name)
 
             # Test if bucket exists
@@ -66,8 +62,7 @@ class StorageService:
                 raise ValueError(f"Bucket '{self.bucket_name}' does not exist")
 
             self._initialized = True
-            print(f"✓ Google Cloud Storage initialized: {self.bucket_name}")
-            print(f"✓ Using service account: {credentials_path}")
+            print(f"✓ GCS bucket ready: {self.bucket_name}")
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Google Cloud Storage: {e}")
 
