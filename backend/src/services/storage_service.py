@@ -98,9 +98,24 @@ class StorageService:
         try:
             blob = self.bucket.blob(file_path)
 
-            # Upload file (read synchronously, not async)
+            # Determine content type based on file extension
+            content_type = "application/octet-stream"
+            if original_filename.lower().endswith(".pdf"):
+                content_type = "application/pdf"
+            elif original_filename.lower().endswith((".jpg", ".jpeg")):
+                content_type = "image/jpeg"
+            elif original_filename.lower().endswith(".png"):
+                content_type = "image/png"
+            elif original_filename.lower().endswith(".json"):
+                content_type = "application/json"
+
+            # Upload file with proper content type
             content = file_content.read()
-            blob.upload_from_string(content)
+            blob.upload_from_string(content, content_type=content_type)
+
+            # Set metadata for better browser handling
+            blob.content_disposition = f'inline; filename="{original_filename}"'
+            blob.patch()
 
             # Make file publicly readable (optional - remove if you want private)
             # blob.make_public()

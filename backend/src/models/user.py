@@ -1,6 +1,6 @@
 """User model."""
 
-from sqlalchemy import Column, String
+from sqlalchemy import Column, String, Date
 from sqlalchemy.orm import relationship
 from .base import Base, TimestampMixin
 
@@ -13,6 +13,16 @@ class User(Base, TimestampMixin):
     id = Column(String, primary_key=True)  # CUID from frontend
     email = Column(String, unique=True, nullable=True, index=True)
     name = Column(String, nullable=True)
+
+    # Demographics for Medical ID
+    date_of_birth = Column(Date, nullable=True)
+    blood_type = Column(String, nullable=True)  # A+, A-, B+, B-, AB+, AB-, O+, O-
+    gender = Column(String, nullable=True)  # male, female, other, prefer-not-to-say
+    phone = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    emergency_contact_name = Column(String, nullable=True)
+    emergency_contact_phone = Column(String, nullable=True)
+    primary_care_physician = Column(String, nullable=True)
 
     # Relationships
     documents = relationship(
@@ -45,3 +55,11 @@ class User(Base, TimestampMixin):
         "TimelineEvent", back_populates="user", cascade="all, delete-orphan"
     )
     audit_logs = relationship("AuditLog", back_populates="user")
+
+    # Medical ID relationships
+    medical_id_cards = relationship(
+        "MedicalIDCard", back_populates="user", cascade="all, delete-orphan"
+    )
+    temporary_medical_summaries = relationship(
+        "TemporaryMedicalSummary", back_populates="user", cascade="all, delete-orphan"
+    )

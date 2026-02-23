@@ -8,6 +8,7 @@ Includes 4-agent pipeline:
 """
 
 import asyncio
+import warnings
 from typing import Dict, Any, List, TypedDict, Annotated, Optional
 from typing_extensions import TypedDict as ExtTypedDict
 from langgraph.graph import StateGraph, END
@@ -18,11 +19,16 @@ from tenacity import (
     wait_exponential,
     retry_if_exception_type,
 )
+
+# Suppress SSL verification warnings for ngrok endpoints (development/testing)
+warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 import operator
 from sqlalchemy.orm import Session
 from datetime import datetime
 import json
 from decimal import Decimal
+import uuid
+from typing import Literal
 
 # Import agent services
 from .relationship_mapper import relationship_mapper
@@ -122,6 +128,9 @@ class AgentState(ExtTypedDict):
     filename: str
     file_type: str
 
+    # Progress tracking
+    job_id: Optional[str]  # Unique job ID for progress tracking
+
     # Database and user context
     db_session: Optional[Any]  # Database session for relationship mapper
     user_id: Optional[str]  # User ID for relationship mapper
@@ -144,6 +153,9 @@ class AgentState(ExtTypedDict):
 class MedicalDocumentAgentOrchestrator:
     """Orchestrates multiple specialized agents for medical document analysis."""
 
+    # Class-level progress tracking
+    _progress_store: Dict[str, Dict[str, Any]] = {}
+
     def __init__(self, settings):
         """
         Initialize the agent orchestrator.
@@ -153,43 +165,130 @@ class MedicalDocumentAgentOrchestrator:
         """
         self.settings = settings
 
-        # Vertex AI is initialised once at startup (main.py → init_vertex_ai()).
-        # Just create the endpoint reference here.
-        from google.cloud import aiplatform
+        # ── HTTP / Colab mode ──────────────────────────────────────────────
+        # When MEDGEMMA_ENDPOINT_URL is set (e.g. a Colab + ngrok deployment),
+        # all LLM calls go to that HTTP endpoint instead of Vertex AI.
+        http_url = getattr(settings, "medgemma_endpoint_url", None)
+        if http_url:
+            self._mode = "http"
+            self._http_url = http_url.rstrip("/")
+            self.endpoint = None
+            print(f"✓ AgentOrchestrator → HTTP / Colab mode: {self._http_url}")
+        else:
+            # ── Vertex AI mode (default) ───────────────────────────────────
+            self._mode = "vertex"
+            self._http_url = None
+            from google.cloud import aiplatform
 
-        self.endpoint = aiplatform.Endpoint(
-            endpoint_name=f"projects/{settings.google_cloud_project}/locations/{settings.vertex_ai_location}/endpoints/{settings.medgemma_endpoint_id}"
-        )
+            self.endpoint = aiplatform.Endpoint(
+                endpoint_name=f"projects/{settings.google_cloud_project}/locations/{settings.vertex_ai_location}/endpoints/{settings.medgemma_endpoint_id}"
+            )
 
         # Build the agent graph
         self.graph = self._build_graph()
 
-    def _build_graph(self) -> StateGraph:
+    @classmethod
+    def update_progress(
+        cls,
+        job_id: str,
+        stage: Literal[
+            "validating", "extracting", "summarizing", "mapping", "completed", "failed"
+        ],
+        status: Literal["in_progress", "completed", "failed"],
+        message: str = "",
+        error: str = None,
+    ):
+        """Update progress for a document processing job."""
+        if job_id not in cls._progress_store:
+            cls._progress_store[job_id] = {
+                "job_id": job_id,
+                "started_at": datetime.utcnow().isoformat(),
+                "stages": {
+                    "validating": {"status": "pending", "message": ""},
+                    "extracting": {"status": "pending", "message": ""},
+                    "summarizing": {"status": "pending", "message": ""},
+                    "mapping": {"status": "pending", "message": ""},
+                },
+                "current_stage": stage,
+                "overall_status": "in_progress",
+                "error": None,
+            }
+            print(f"[Progress] Created progress tracking for job: {job_id}")
+
+        progress = cls._progress_store[job_id]
+
+        # Handle special "completed" and "failed" stages (overall status only)
+        if stage == "completed":
+            progress["overall_status"] = "completed"
+            progress["completed_at"] = datetime.utcnow().isoformat()
+            # Set mapping as completed since it's the last real stage
+            if "mapping" in progress["stages"]:
+                progress["stages"]["mapping"]["status"] = "completed"
+            print(f"[Progress] Job {job_id} marked as COMPLETED")
+            return
+        elif stage == "failed":
+            progress["overall_status"] = "failed"
+            progress["error"] = error
+            print(f"[Progress] Job {job_id} marked as FAILED: {error}")
+            return
+
+        # Handle regular agent stages
+        progress["current_stage"] = stage
+        if stage in progress["stages"]:
+            progress["stages"][stage]["status"] = status
+            progress["stages"][stage]["message"] = message
+            print(f"[Progress] Job {job_id} - Stage '{stage}' → {status}: {message}")
+
+        if status == "failed":
+            progress["overall_status"] = "failed"
+            progress["error"] = error
+        elif stage == "mapping" and status == "completed":
+            progress["overall_status"] = "completed"
+            progress["completed_at"] = datetime.utcnow().isoformat()
+            print(f"[Progress] Job {job_id} all stages COMPLETED")
+
+    @classmethod
+    def create_job_id(cls, filename: str) -> str:
+        """Generate a unique job ID for progress tracking."""
+        import uuid
+
+        job_id = f"{uuid.uuid4().hex[:8]}-{filename[:20].replace(' ', '_')}"
+        return job_id
+
+    @classmethod
+    def get_progress(cls, job_id: str) -> Optional[Dict[str, Any]]:
+        """Get progress for a document processing job."""
+        return cls._progress_store.get(job_id)
+
+    def _build_graph(self):
         """
-        Build the 4-agent LangGraph workflow.
+        Build the LangGraph agent workflow.
 
         Flow:
         1. Agent 1: Validator (quality gate)
-        2. Parallel: Agent 2 (Extractor) + Agent 3 (Summarizer)
-        3. Agent 6: Relationship Mapper
+        2. Agent 2: Clinical Extractor
+        3. Agent 3: Intelligent Summarizer
+        4. Agent 6: Relationship Mapper
         """
         workflow = StateGraph(AgentState)
 
-        workflow.add_node("validator", self._document_validator)       # Agent 1
-        workflow.add_node("parallel_agents", self._run_parallel_agents) # Agents 2+3
-        workflow.add_node("relationship_mapper", self._relationship_mapper) # Agent 6
+        workflow.add_node("validator", self._document_validator)  # Agent 1
+        workflow.add_node("extractor", self._clinical_extractor)  # Agent 2
+        workflow.add_node("summarizer", self._intelligent_summarizer)  # Agent 3
+        workflow.add_node("relationship_mapper", self._relationship_mapper)  # Agent 6
 
         workflow.set_entry_point("validator")
 
-        # Validator → Parallel agents (or stop)
+        # Validator → Extractor (or stop)
         workflow.add_conditional_edges(
             "validator",
             self._should_continue_processing,
-            {"continue": "parallel_agents", "stop": END},
+            {"continue": "extractor", "stop": END},
         )
 
-        # Parallel → Relationship Mapper → END
-        workflow.add_edge("parallel_agents", "relationship_mapper")
+        # Sequential: Extractor → Summarizer → Relationship Mapper → END
+        workflow.add_edge("extractor", "summarizer")
+        workflow.add_edge("summarizer", "relationship_mapper")
         workflow.add_edge("relationship_mapper", END)
 
         return workflow.compile()
@@ -199,56 +298,6 @@ class MedicalDocumentAgentOrchestrator:
         if state.get("is_valid", False) and state.get("should_continue", False):
             return "continue"
         return "stop"
-
-    async def _run_parallel_agents(self, state: AgentState) -> Dict[str, Any]:
-        """
-        Priority 3: Run extractor and summarizer in PARALLEL.
-        This cuts processing time in half!
-        """
-        print(f"\n🔄 Running Extractor & Summarizer in PARALLEL...")
-
-        try:
-            # Execute both agents simultaneously
-            results = await asyncio.gather(
-                self._clinical_extractor(state),
-                self._intelligent_summarizer(state),
-                return_exceptions=True,  # Don't fail everything if one agent fails
-            )
-
-            extractor_result, summarizer_result = results
-
-            # Handle potential failures
-            clinical_data = {}
-            summaries = {}
-            errors = []
-
-            if isinstance(extractor_result, Exception):
-                print(f"❌ Extractor failed: {extractor_result}")
-                errors.append(f"Extractor: {str(extractor_result)}")
-            else:
-                clinical_data = extractor_result.get("clinical_data", {})
-
-            if isinstance(summarizer_result, Exception):
-                print(f"❌ Summarizer failed: {summarizer_result}")
-                errors.append(f"Summarizer: {str(summarizer_result)}")
-            else:
-                summaries = summarizer_result.get("summaries", {})
-
-            print(f"✅ Parallel execution complete!")
-
-            return {
-                "clinical_data": clinical_data,
-                "summaries": summaries,
-                "errors": errors,
-            }
-
-        except Exception as e:
-            print(f"❌ Parallel execution failed: {e}")
-            return {
-                "clinical_data": {},
-                "summaries": {},
-                "errors": [f"Parallel execution: {str(e)}"],
-            }
 
     async def _document_validator(self, state: AgentState) -> Dict[str, Any]:
         """
@@ -262,8 +311,8 @@ The JSON must have EXACTLY this top-level structure (three keys: validation, doc
 
 {
   "validation": {
-    "is_valid": <true if the document is a legible medical record, false otherwise>,
-    "quality_score": <0.0 to 1.0 — readability/completeness>,
+    "is_valid": <true if the document is a medical image or record, false otherwise>,
+    "quality_score": <0.0 to 1.0 - readability/completeness>,
     "issues": <array of strings describing any problems, empty array if none>
   },
   "document_metadata": {
@@ -277,18 +326,45 @@ The JSON must have EXACTLY this top-level structure (three keys: validation, doc
     }
   },
   "processability": {
-    "can_extract_text": <true if text is readable>,
+    "can_extract_text": <true if text is readable or image has diagnostic value>,
     "estimated_confidence": <0.0 to 1.0>,
     "language": <ISO 639-1 language code, e.g. "en">
   }
 }
 
-Set is_valid to false ONLY if the document is: not a medical record, too blurry/corrupted to read, or blank.
+VALIDATION RULES:
+- Set is_valid to TRUE for:
+  - Medical imaging (X-rays, CT, MRI, ultrasound) - even without text labels
+  - Lab reports and test results
+  - Prescriptions and medication lists
+  - Discharge summaries and consultation notes
+  - Any document with medical/diagnostic value
+  
+- Set is_valid to FALSE ONLY if:
+  - Image is completely blank or corrupted
+  - Image is too blurry to see any anatomical structures or text
+  - Image is clearly not medical-related (e.g., random photo, meme, advertisement)
+  - Document is illegible and cannot provide any clinical value
+
+For medical images without text (X-rays, scans):
+- Set document_type to "x-ray" or "imaging"
+- Set can_extract_text to false (no text to extract)
+- Set estimated_confidence based on image clarity (0.7-0.9 for clear scans)
+- Set quality_score based on diagnostic value (0.7-1.0 for clear medical images)
+- Leave date/provider fields as null if not visible
+- Issues array can note "No text labels visible" or "Limited metadata" but still accept
+
 Output the JSON object and nothing else."""
 
             response = await self._call_llm_with_retry(
                 prompt, state["image_bytes"], state["filename"]
             )
+
+            print("\n" + "─" * 60)
+            print("🔎 AGENT-1 RAW MODEL OUTPUT:")
+            print("─" * 60)
+            print(response)
+            print("─" * 60 + "\n")
 
             validation_result = self._parse_and_validate_validation(response)
 
@@ -297,6 +373,32 @@ Output the JSON object and nothing else."""
                 "quality_score", 0.0
             )
             should_continue = is_valid and quality_score >= 0.5
+
+            # Update progress
+            job_id = state.get("job_id")
+            if job_id:
+                if is_valid:
+                    self.update_progress(
+                        job_id,
+                        "validating",
+                        "completed",
+                        f"Document validated (quality: {quality_score:.2f})",
+                    )
+                    self.update_progress(
+                        job_id,
+                        "extracting",
+                        "in_progress",
+                        "Extracting clinical data...",
+                    )
+                else:
+                    issues = validation_result.get("validation", {}).get("issues", [])
+                    self.update_progress(
+                        job_id,
+                        "validating",
+                        "failed",
+                        "Document validation failed",
+                        error=", ".join(issues),
+                    )
 
             if is_valid:
                 print(f"✓ Document Validator: PASSED (quality: {quality_score:.2f})")
@@ -312,6 +414,11 @@ Output the JSON object and nothing else."""
 
         except Exception as e:
             print(f"❌ Document Validator error: {e}")
+            job_id = state.get("job_id")
+            if job_id:
+                self.update_progress(
+                    job_id, "validating", "failed", "Validation error", error=str(e)
+                )
             return {
                 "validation": {"error": str(e)},
                 "is_valid": False,
@@ -323,62 +430,69 @@ Output the JSON object and nothing else."""
         """
         Agent 2: Clinical Data Extractor
         Extracts ALL structured medical data from the document.
-        Operates solely on the document image — no prior patient history
+        Operates solely on the document image - no prior patient history
         is injected to avoid anchoring bias.
         """
         try:
-            prompt = """You are extracting structured clinical data from a medical document image.
+            prompt = """You are a clinical data transcription agent. Your only job is to copy information that is EXPLICITLY WRITTEN in the medical document into a JSON structure.
 
-TASK: Read every piece of clinical information visible in the document and populate the JSON schema below.
-Do NOT leave arrays empty if the data exists in the document. Be thorough.
+ABSOLUTE RULES — violations are worse than an empty array:
+1. ONLY extract what is EXPLICITLY and LITERALLY written in the document. Nothing else.
+2. DO NOT infer, assume, imply, or deduce anything not directly stated in the document.
+3. DO NOT diagnose. A symptom or complaint (e.g. "fatigue", "leg swelling") is NOT a condition unless the document explicitly states it as a diagnosis or active problem.
+4. DO NOT add medications that are not explicitly prescribed or listed in this document.
+5. DO NOT populate a field by reasoning about what "must" be present. If it is not written, it does not exist.
+6. DO NOT use the example values in the JSON template below as hints for what to extract — they are FORMAT EXAMPLES ONLY.
+7. Use null for any field not explicitly stated. Use [] for any category with no documented entries in this document.
 
-EXTRACTION RULES:
-- conditions: EVERY diagnosis, suspected diagnosis, symptom, complaint, or medical problem mentioned
-  (e.g. "Type 2 Diabetes", "HTN", "fatigue", "leg swelling", "shortness of breath", "obesity")
-- medications: ALL drugs, prescriptions, ordered medications, or medication instructions
-- allergies: Any documented allergies or reactions
-- lab_results: ALL lab tests mentioned — including ordered/pending labs (mark value as "pending" if not yet resulted)
-  (e.g. "HbA1c ordered", "FBS ordered", "Lipid profile ordered" → include each as a lab result)
-- vital_signs: ALL vitals stated in the document
-  (BP, HR, RR, Temperature, Weight, Height, BMI, SpO2, Pain score — each as a separate entry)
-- procedures: Any procedures performed or ordered
-- immunizations: Any vaccines documented
+WHAT TO INCLUDE (only if explicitly written):
+- conditions: Diagnoses or active problems the document explicitly names (e.g. "Dx: Hypertension", "Assessment: T2DM"). NOT symptoms unless labeled as a diagnosis.
+- medications: Drugs explicitly prescribed, dispensed, or listed in the document with their written details.
+- allergies: Allergies or adverse reactions explicitly documented by name.
+- lab_results: Lab tests explicitly ordered or resulted in this document. Use "pending" as value only if the document says it is ordered/pending.
+- vital_signs: Vital sign values explicitly recorded with their numbers.
+- procedures: Procedures explicitly stated as performed or ordered in this document.
+- immunizations: Vaccines explicitly documented in this document.
 
-Return a JSON object with EXACTLY these seven top-level array keys.
-Use empty arrays [] ONLY when a category genuinely has no data in the document.
+Output ONLY this JSON structure. Use [] for categories with no data. Output no markdown, no explanation, no commentary.
 
 {
   "conditions": [
-    {"name": "Type 2 Diabetes Mellitus", "icd10_code": null, "status": "active", "diagnosed_date": null, "severity": null, "body_site": null}
+    {"name": "<condition exactly as written>", "icd10_code": null, "status": "<active/resolved/chronic — ONLY if explicitly stated, else null>", "diagnosed_date": null, "severity": null, "body_site": null}
   ],
   "medications": [
-    {"name": "Metformin", "dosage": "500mg", "frequency": "twice daily", "route": "oral", "status": "active", "prescriber": null, "instructions": null}
+    {"name": "<drug name exactly as written>", "dosage": "<as written or null>", "frequency": "<as written or null>", "route": "<as written or null>", "status": "active", "prescriber": null, "instructions": "<as written or null>"}
   ],
   "allergies": [
-    {"allergen": "Penicillin", "allergen_type": "medication", "reaction": "rash", "severity": "moderate"}
+    {"allergen": "<as written>", "allergen_type": "<only if stated>", "reaction": "<as written or null>", "severity": "<as written or null>"}
   ],
   "lab_results": [
-    {"test_name": "HbA1c", "value": "pending", "unit": null, "reference_range": null, "is_abnormal": false, "test_date": null}
+    {"test_name": "<as written>", "value": "<result value or 'pending' if ordered>", "unit": "<as written or null>", "reference_range": null, "is_abnormal": false, "test_date": null}
   ],
   "vital_signs": [
-    {"type": "blood_pressure", "value": null, "unit": "mmHg", "systolic": 138, "diastolic": 86, "measured_date": null},
-    {"type": "heart_rate", "value": 78, "unit": "bpm", "systolic": null, "diastolic": null, "measured_date": null},
-    {"type": "weight", "value": 195, "unit": "lbs", "systolic": null, "diastolic": null, "measured_date": null},
-    {"type": "BMI", "value": 28, "unit": "kg/m2", "systolic": null, "diastolic": null, "measured_date": null}
+    {"type": "<vital type>", "value": null, "unit": "<as written>", "systolic": null, "diastolic": null, "measured_date": null}
   ],
   "procedures": [
-    {"procedure_name": "ECG", "performed_date": null, "outcome": null}
+    {"procedure_name": "<as written>", "performed_date": null, "outcome": null}
   ],
   "immunizations": [
-    {"vaccine_name": "Influenza", "administered_date": null}
+    {"vaccine_name": "<as written>", "administered_date": null}
   ]
 }
 
-Now extract from the document image and output only the JSON object."""
+Now read the document image and output ONLY the JSON object populated with information that is EXPLICITLY WRITTEN in this document."""
 
             response = await self._call_llm_with_retry(
                 prompt, state["image_bytes"], state["filename"]
             )
+
+            # Log raw response for debugging
+            print("\n" + "─" * 70)
+            print("🔎 AGENT-2 RAW MODEL OUTPUT:")
+            print("─" * 70)
+            print(response)  # Full response, no truncation
+            print("─" * 70)
+            print(f"Response length: {len(response)} chars\n")
 
             clinical_data = self._parse_and_validate_clinical_data(response)
 
@@ -387,10 +501,31 @@ Now extract from the document image and output only the JSON object."""
             }
             print(f"✓ Clinical Data Extractor: {counts}")
 
+            # Update progress
+            job_id = state.get("job_id")
+            if job_id:
+                self.update_progress(
+                    job_id,
+                    "extracting",
+                    "completed",
+                    f"Extracted {sum(counts.values())} clinical items",
+                )
+                self.update_progress(
+                    job_id,
+                    "summarizing",
+                    "in_progress",
+                    "Creating document summaries...",
+                )
+
             return {"clinical_data": clinical_data}
 
         except Exception as e:
             print(f"❌ Clinical Data Extractor error: {e}")
+            job_id = state.get("job_id")
+            if job_id:
+                self.update_progress(
+                    job_id, "extracting", "failed", "Extraction error", error=str(e)
+                )
             return {
                 "clinical_data": {"error": str(e)},
                 "errors": [f"Clinical Extraction: {str(e)}"],
@@ -407,13 +542,19 @@ Now extract from the document image and output only the JSON object."""
 Return a JSON object with EXACTLY these five top-level keys:
   brief_summary, search_optimized_summary, urgency_level, detailed_summary, agent_context
 
+CRITICAL JSON FORMATTING RULES:
+- Use empty arrays [] (not null) for any list fields with no data (e.g., key_findings, action_items, risk_factors)
+- Use empty strings "" (not null) for any string fields with no data
+- Use empty objects {} (not null) for any object fields with no data
+- Never use null values in the JSON output
+
 KEY DEFINITIONS:
 
 brief_summary (string):
   5-7 complete sentences written for a clinician or patient.
   Cover: who the patient is, what brought them in, key diagnoses/conditions,
   current medications or treatments, important lab/vital findings, and next steps.
-  Minimum 150 words. Must NOT be a bullet list — write flowing prose.
+  Minimum 150 words. Must NOT be a bullet list - write flowing prose.
 
 search_optimized_summary (string):
   400-600 word dense paragraph written to maximise semantic search recall.
@@ -426,21 +567,21 @@ search_optimized_summary (string):
   - Procedures, diagnoses, ICD-10 codes if visible
   - Provider names, facility, visit date
   - Action items, follow-up instructions
-  Write as connected prose — NO bullet points. Repeat key terms naturally.
+  Write as connected prose - NO bullet points. Repeat key terms naturally.
   This text will be embedded for vector search so exhaustive terminology coverage is critical.
 
 urgency_level (string): exactly one of: routine | follow-up-needed | urgent | critical
 
 detailed_summary (object):
-  clinical_overview (string), key_findings (array of strings),
-  treatment_plan (object: medications_started, medications_stopped, lifestyle_modifications, follow_up),
-  clinical_significance (string), action_items (array of strings)
+  clinical_overview (string), key_findings (array of strings - use [] if none),
+  treatment_plan (object: medications_started, medications_stopped, lifestyle_modifications, follow_up - use "" or [] for empty fields),
+  clinical_significance (string), action_items (array of strings - use [] if none)
 
 agent_context (object):
   document_purpose (string), clinical_domain (string), completeness_score (0.0-1.0),
-  semantic_keywords (array of strings),
-  temporal_events: array of {event_type, event_title, event_description, date, importance, provider, facility, related_entity},
-  risk_factors (array of strings), missing_information (array of strings),
+  semantic_keywords (array of strings - use [] if none),
+  temporal_events: array of {event_type, event_title, event_description, date, importance, provider, facility, related_entity} - use [] if none,
+  risk_factors (array of strings - use [] if none), missing_information (array of strings - use [] if none),
   recommendations_for_future_agents: {timeline_agent, risk_agent, search_agent}
 
 Output the JSON object and nothing else."""
@@ -449,6 +590,14 @@ Output the JSON object and nothing else."""
                 prompt, state["image_bytes"], state["filename"]
             )
 
+            # Log raw response for debugging
+            print("\n" + "─" * 70)
+            print("🔎 AGENT-3 RAW MODEL OUTPUT:")
+            print("─" * 70)
+            print(response)  # Full response, no truncation
+            print("─" * 70)
+            print(f"Response length: {len(response)} chars\n")
+
             summaries = self._parse_and_validate_summary(response)
 
             urgency = summaries.get("urgency_level", "routine")
@@ -456,10 +605,28 @@ Output the JSON object and nothing else."""
             print(f"✓ Intelligent Summarizer: {urgency.upper()}")
             print(f"  Summary: {brief}...")
 
+            # Update progress
+            job_id = state.get("job_id")
+            if job_id:
+                self.update_progress(
+                    job_id,
+                    "summarizing",
+                    "completed",
+                    f"Summary created ({urgency} urgency)",
+                )
+                self.update_progress(
+                    job_id, "mapping", "in_progress", "Mapping relationships..."
+                )
+
             return {"summaries": summaries}
 
         except Exception as e:
             print(f"❌ Intelligent Summarizer error: {e}")
+            job_id = state.get("job_id")
+            if job_id:
+                self.update_progress(
+                    job_id, "summarizing", "failed", "Summarization error", error=str(e)
+                )
             return {
                 "summaries": {
                     "brief_summary": "Error processing summary",
@@ -475,7 +642,7 @@ Output the JSON object and nothing else."""
     async def _relationship_mapper(self, state: AgentState) -> Dict[str, Any]:
         """
         Agent 6: Relationship Mapper
-        Maps relationships between clinical entities (medications→conditions, labs→conditions, etc.)
+        Maps relationships between clinical entities (medications to conditions, labs to conditions, etc.)
         """
         try:
             print(f"🔍 Agent 6: Relationship Mapper")
@@ -508,10 +675,29 @@ Output the JSON object and nothing else."""
             if relationships["summary"]:
                 print(f"  By type: {relationships['summary'].get('by_type', {})}")
 
+            # Update progress - this is the final stage
+            job_id = state.get("job_id")
+            if job_id:
+                self.update_progress(
+                    job_id,
+                    "mapping",
+                    "completed",
+                    f"Mapped {relationships['total_count']} relationships",
+                )
+
             return {"relationships": relationships}
 
         except Exception as e:
             print(f"❌ Relationship Mapper error: {e}")
+            job_id = state.get("job_id")
+            if job_id:
+                self.update_progress(
+                    job_id,
+                    "mapping",
+                    "failed",
+                    "Relationship mapping error",
+                    error=str(e),
+                )
             return {
                 "relationships": {
                     "error": str(e),
@@ -538,75 +724,107 @@ Output the JSON object and nothing else."""
         """
         Call LLM with automatic retry logic.
         Retries up to 3 times with exponential backoff on network errors.
+        Strips MedGemma-1.5 thinking tokens (<unused94>...<unused95>) from
+        every response so all downstream parsers receive clean output.
         """
-        return await self._call_llm(prompt, image_bytes, filename)
+        import re
+
+        raw = await self._call_llm(prompt, image_bytes, filename)
+        # Remove full thinking blocks:  <unusedN> ... <unusedN>
+        clean = re.sub(r"<unused\d+>.*?<unused\d+>\s*", "", raw, flags=re.DOTALL)
+        # Remove any stray remaining tokens
+        clean = re.sub(r"<unused\d+>", "", clean).strip()
+        if clean != raw:
+            print(
+                f"  ↳ Stripped thinking tokens ({len(raw) - len(clean)} chars removed)"
+            )
+        return clean
 
     def _prepare_image(self, image_bytes: bytes, filename: str) -> tuple[bytes, str]:
         """
-        Prepare an image for the Vertex AI endpoint which has a 1.5 MB total
-        request size limit.
+        Prepare an image for the MedGemma endpoint.
 
-        Strategy — quality first, dimensions last:
+        For Vertex AI: 1.5 MB total request limit - target 1,050 KB raw bytes
+        For Colab/HTTP: More flexible limits (T4 GPU with 16GB VRAM) - target 2,500 KB raw bytes
+
+        Strategy - quality first, dimensions last:
           1. If already under budget, return as-is.
-          2. Cap the image at 1920px on its longest side (preserves fine text /
-             table detail; no information loss for typical document scans).
-          3. Binary-search JPEG quality from 92 → 72 in steps of 4.
-             This finds the highest quality that fits the budget.
+          2. Cap the image at 2560px (Colab) or 1920px (Vertex) on longest side.
+          3. Binary-search JPEG quality from 92 to 72 in steps of 4.
           4. If quality-only compression is not enough, reduce dimensions in
-             steps (1600 → 1280 → 1024 → 896) and repeat quality search.
-          5. Absolute last resort: 896×896 / q=65.
-
-        Budget math:
-          Vertex limit: 1,500,000 bytes total
-          Largest prompt  ≈ 5 KB  →  safe raw-byte budget ≈ 1,050,000 bytes
-          Base64 of 1,050,000 bytes  ≈ 1,400,000 bytes — well within limit.
-          This is 17% more headroom than the previous 900 KB target.
-
-        The previous approach jumped straight to 896×896 and then used coarse
-        quality steps (85 → 70 → 55 → 40), causing significant visual
-        degradation on large documents. This version keeps dimensions as large
-        as possible and uses fine-grained quality steps.
+             steps (for Colab: 2048 to 1600 to 1280; for Vertex: 1600 to 1280 to 1024 to 896).
+          5. Absolute last resort: 896x896 / q=65.
 
         Returns (prepared_bytes, mime_type).
         """
         from PIL import Image
         import io
 
-        TARGET_BYTES = 1_050_000       # raw bytes budget (base64 → ~1.4 MB)
-        MAX_INITIAL_DIM = 1920         # preserve detail; only shrink if needed
+        # Only compress images larger than 1.5MB
+        # Both Colab (T4 GPU) and Vertex AI can handle 1.5MB images efficiently
+        # This preserves original quality for most medical documents
+        TARGET_BYTES = 1_500_000  # 1.5 MB threshold
+        MAX_INITIAL_DIM = 1920
         FALLBACK_DIMS = [1600, 1280, 1024, 896]
+
         QUALITY_HIGH = 92
-        QUALITY_LOW = 72              # never go below this on a first pass
+        QUALITY_LOW = 72
         QUALITY_STEP = 4
 
         ext = filename.lower()
         mime = (
-            "image/jpeg" if (ext.endswith(".jpg") or ext.endswith(".jpeg"))
-            else "image/png" if ext.endswith(".png")
-            else "image/jpeg"
+            "image/jpeg"
+            if (ext.endswith(".jpg") or ext.endswith(".jpeg"))
+            else "image/png" if ext.endswith(".png") else "image/jpeg"
         )
         original_size = len(image_bytes)
 
-        # ── Fast path ───────────────────────────────────────────────────────
+        # ── FAST PATH: Image is already small, send as-is ──────────────────
+        # CRITICAL: Do NOT re-encode images that are already under budget!
+        # Re-encoding can introduce JPEG artifacts, strip EXIF rotation data,
+        # and actually make the image look WORSE to the model.
         if original_size <= TARGET_BYTES:
-            return image_bytes, mime
+            # Quick validation: can PIL open it without errors?
+            try:
+                img_test = Image.open(io.BytesIO(image_bytes))
+                img_test.verify()  # Check if image is valid
+                print(
+                    f"  ✓ Image {original_size // 1024} KB already under budget — sending original"
+                )
+                return image_bytes, mime
+            except Exception as e:
+                # Image is corrupted, need to normalize it through PIL
+                print(f"  ⚠️  Image validation failed ({e}) — normalizing through PIL")
+                # Fall through to normalization logic
 
-        print(
-            f"⚙️  Image {original_size / 1024 / 1024:.2f} MB — fitting to "
-            f"Vertex AI 1.5 MB limit (target raw ≤ {TARGET_BYTES // 1024} KB)"
-        )
-
+        # ── Normalization needed: re-encode through PIL ────────────────────
         try:
             img = Image.open(io.BytesIO(image_bytes))
+
+            # Normalize color mode: always convert to RGB (except grayscale)
             if img.mode not in ("RGB", "L"):
                 img = img.convert("RGB")
 
             orig_w, orig_h = img.size
 
+            # If we're here, the image was either over budget or corrupted
+            if original_size > TARGET_BYTES:
+                print(
+                    f"⚙️  Image {original_size / 1024 / 1024:.2f} MB — fitting to "
+                    f"target ≤ {TARGET_BYTES // 1024} KB"
+                )
+            else:
+                print(
+                    f"⚙️  Image {original_size / 1024 / 1024:.2f} MB — fitting to "
+                    f"target ≤ {TARGET_BYTES // 1024} KB"
+                )
+
+            # Image is over budget or corrupted — compress it
             def _try_compress(pil_img: Image.Image, quality: int) -> bytes:
                 buf = io.BytesIO()
-                pil_img.save(buf, format="JPEG", quality=quality,
-                             optimize=True, progressive=True)
+                pil_img.save(
+                    buf, format="JPEG", quality=quality, optimize=True, progressive=True
+                )
                 return buf.getvalue()
 
             def _resize_to(pil_img: Image.Image, max_dim: int) -> Image.Image:
@@ -615,9 +833,7 @@ Output the JSON object and nothing else."""
                 if max(w, h) <= max_dim:
                     return pil_img
                 scale = max_dim / max(w, h)
-                return pil_img.resize(
-                    (int(w * scale), int(h * scale)), Image.LANCZOS
-                )
+                return pil_img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
 
             def _binary_search_quality(pil_img: Image.Image) -> bytes | None:
                 """
@@ -631,7 +847,9 @@ Output the JSON object and nothing else."""
                 if len(candidate) <= TARGET_BYTES:
                     return candidate
                 # Linear descent in steps — fast enough for 5 iterations
-                for q in range(QUALITY_HIGH - QUALITY_STEP, QUALITY_LOW - 1, -QUALITY_STEP):
+                for q in range(
+                    QUALITY_HIGH - QUALITY_STEP, QUALITY_LOW - 1, -QUALITY_STEP
+                ):
                     candidate = _try_compress(pil_img, q)
                     if len(candidate) <= TARGET_BYTES:
                         return candidate
@@ -640,7 +858,9 @@ Output the JSON object and nothing else."""
             # ── Pass 1: cap at MAX_INITIAL_DIM, binary-search quality ───────
             working = _resize_to(img, MAX_INITIAL_DIM)
             if working.size != (orig_w, orig_h):
-                print(f"  ↳ Capped to {working.size[0]}×{working.size[1]} (longest side ≤ {MAX_INITIAL_DIM}px)")
+                print(
+                    f"  ↳ Capped to {working.size[0]}×{working.size[1]} (longest side ≤ {MAX_INITIAL_DIM}px)"
+                )
 
             result = _binary_search_quality(working)
             if result:
@@ -662,7 +882,9 @@ Output the JSON object and nothing else."""
                         f"{original_size // 1024} KB → {len(result) // 1024} KB"
                     )
                     return result, "image/jpeg"
-                print(f"  ↳ {shrunk.size[0]}×{shrunk.size[1]} still too large — reducing further")
+                print(
+                    f"  ↳ {shrunk.size[0]}×{shrunk.size[1]} still too large — reducing further"
+                )
 
             # ── Absolute last resort ─────────────────────────────────────────
             final = _resize_to(img, 896)
@@ -702,7 +924,12 @@ Output the JSON object and nothing else."""
         import base64
 
         try:
-            # Resize / recompress the image to fit within Vertex AI's 1.5 MB limit
+            # Same image preparation for both HTTP and Vertex AI:
+            # _prepare_image normalises the image to RGB, detects mime type,
+            # and only compresses if the image exceeds the Vertex AI size budget.
+            # For images already under budget (fast path), it returns the
+            # original bytes unchanged — so there is zero quality loss for
+            # normal-sized uploads regardless of which endpoint is used.
             image_bytes, mime_type = self._prepare_image(image_bytes, filename)
 
             # Base64 encode and build data URL
@@ -757,6 +984,163 @@ Output the JSON object and nothing else."""
             ]
 
             print(f"🔍 Calling MedGemma endpoint...")
+
+            # ── Route: HTTP / Colab ────────────────────────────────────────
+            if self._mode == "http":
+                import httpx
+
+                # ── Payload debug ──────────────────────────────────────────
+                msgs = instances[0].get("messages", [])
+                for m in msgs:
+                    for p in m.get("content") or []:
+                        if isinstance(p, dict):
+                            if p.get("type") == "image_url":
+                                url_val = p.get("image_url", {}).get("url", "")
+                                print(
+                                    f"  📦 Payload image_url: present={bool(url_val)}, len={len(url_val)}, prefix={url_val[:50]}..."
+                                )
+                            elif p.get("type") == "text":
+                                text_len = len(p.get("text", ""))
+                                print(f"  📦 Payload text ({text_len} chars)")
+                # ── End payload debug ──────────────────────────────────────
+
+                try:
+                    # Disable SSL verification for ngrok endpoints (they can have certificate issues)
+                    # This is safe for ngrok development/testing environments
+                    import ssl
+
+                    ssl_context = ssl.create_default_context()
+                    ssl_context.check_hostname = False
+                    ssl_context.verify_mode = ssl.CERT_NONE
+
+                    async with httpx.AsyncClient(
+                        timeout=900.0,  # 15 min timeout for HPC (large outputs with max_tokens=8192)
+                        verify=False,  # Disable SSL verification for ngrok
+                    ) as client:
+                        print(f"  → Sending request to {self._http_url}/predict")
+                        resp = await client.post(
+                            f"{self._http_url}/predict",
+                            json={"instances": instances},
+                            headers={
+                                "Content-Type": "application/json",
+                                # Required to bypass ngrok's browser-warning splash page
+                                "ngrok-skip-browser-warning": "true",
+                            },
+                        )
+
+                    print(f"  ← Response status: {resp.status_code}")
+
+                    if resp.status_code != 200:
+                        error_detail = resp.text[:500]
+                        print(f"❌ HTTP Error {resp.status_code}: {error_detail}")
+                        return f'{{"error": "HTTP {resp.status_code}: {error_detail}"}}'
+
+                    data = resp.json()
+                    predictions = data.get("predictions", [])
+                    print(f"📥 HTTP predictions count: {len(predictions)}")
+
+                    # Extract assistant content from chatCompletions response
+                    if not predictions:
+                        print("⚠️  No predictions in response")
+                        return '{"error": "No predictions in HTTP response"}'
+
+                    first = predictions[0]
+                    print(f"  📦 First prediction type: {type(first)}")
+
+                    if isinstance(first, dict):
+                        # Check for error in prediction
+                        if "error" in first:
+                            error_msg = first["error"]
+                            print(f"❌ Prediction error: {error_msg}")
+                            return json.dumps(first)
+
+                        # Try chatCompletions format first
+                        choices = first.get("choices", [])
+                        if choices:
+                            content = choices[0].get("message", {}).get("content")
+                            if content:
+                                print(
+                                    f"✓ Extracted from choices[0].message.content ({len(content)} chars)"
+                                )
+                                return content
+
+                        # Fallback: try direct content/text keys
+                        content = first.get("content") or first.get("text")
+                        if content:
+                            print(f"✓ Extracted from direct key ({len(content)} chars)")
+                            return content
+
+                        # If nothing found, log the structure
+                        print(
+                            f"⚠️  Unexpected response structure. Keys: {list(first.keys())}"
+                        )
+
+                    return json.dumps(first)
+
+                except httpx.TimeoutException as e:
+                    print(f"❌ HTTP timeout: {e}")
+                    print(
+                        "\n⏱️  REQUEST TIMEOUT - The HPC server took too long to respond"
+                    )
+                    print(
+                        "This usually means the model is processing a very complex document"
+                    )
+                    print(
+                        "or the server is overloaded. Try again or increase timeout.\n"
+                    )
+                    return '{"error": "Request timeout - HPC endpoint may be overloaded or the document is too complex"}'
+                except httpx.ConnectError as e:
+                    print(f"❌ HTTP connection error: {e}")
+                    print("\n" + "=" * 70)
+                    print("🔴 CONNECTION ERROR - CANNOT REACH HPC SERVER")
+                    print("=" * 70)
+                    print(f"Attempted to connect to: {self._http_url}")
+                    print("\nPossible causes:")
+                    print("  - HPC server is not running")
+                    print("  - ngrok tunnel has expired")
+                    print("  - Wrong URL in .env file")
+                    print("  - Network/firewall blocking connection")
+                    print("\nACTION REQUIRED:")
+                    print("  1. Check if hpc_medgemma_server.py is running on HPC")
+                    print("  2. Restart it: python hpc_medgemma_server.py")
+                    print("  3. Copy the new ngrok URL")
+                    print("  4. Update MEDGEMMA_ENDPOINT_URL in .env")
+                    print("  5. Restart this backend")
+                    print("=" * 70 + "\n")
+                    return '{"error": "Connection failed - HPC server unreachable. Check if server is running and ngrok URL is current."}'
+                except httpx.RequestError as e:
+                    print(f"❌ HTTP request error: {e}")
+                    return f'{{"error": "Connection failed: {str(e)}"}}'
+                except Exception as e:
+                    error_msg = str(e)
+                    print(f"❌ HTTP unexpected error: {error_msg}")
+
+                    # Check for SSL errors
+                    if "SSL" in error_msg or "ssl" in error_msg:
+                        print("\n" + "=" * 70)
+                        print("🔴 SSL ERROR - NGROK TUNNEL ISSUE")
+                        print("=" * 70)
+                        print("Your HPC server or ngrok tunnel may have:")
+                        print("  1. Expired (free ngrok sessions expire after 2 hours)")
+                        print("  2. Been restarted with a new URL")
+                        print("  3. Stopped running")
+                        print("\nACTION REQUIRED:")
+                        print(
+                            "  1. Check if hpc_medgemma_server.py is still running on HPC"
+                        )
+                        print("  2. If not, restart it: python hpc_medgemma_server.py")
+                        print("  3. Copy the new ngrok URL from the output")
+                        print("  4. Update MEDGEMMA_ENDPOINT_URL in your .env file")
+                        print("  5. Restart this backend server")
+                        print("=" * 70 + "\n")
+                        return '{"error": "SSL Error - ngrok tunnel expired or unavailable. Check HPC server and restart with new ngrok URL."}'
+
+                    import traceback
+
+                    traceback.print_exc()
+                    return f'{{"error": "HTTP call failed: {error_msg}"}}'
+
+            # ── Route: Vertex AI ───────────────────────────────────────────
             response = self.endpoint.predict(instances=instances)
 
             predictions = response.predictions
@@ -1360,6 +1744,7 @@ Output the JSON object and nothing else."""
         db_session: Optional[Session] = None,
         user_id: Optional[str] = None,
         document_id: Optional[int] = None,
+        job_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Process document through 4-agent pipeline.
@@ -1371,23 +1756,35 @@ Output the JSON object and nothing else."""
             db_session: Database session for relationship mapping
             user_id: User ID for relationship mapping
             document_id: Document ID being processed
+            job_id: Unique job ID for progress tracking (auto-generated if not provided)
 
         Returns:
-            Combined results from all 4 agents
+            Combined results from all 4 agents (including job_id for progress tracking)
         """
+        # Create or use provided job_id for progress tracking
+        if not job_id:
+            job_id = self.create_job_id(filename)
+
         print(f"\n{'='*60}")
         print(f"🤖 4-AGENT PIPELINE STARTED")
         print(f"{'='*60}")
+        print(f"Job ID: {job_id}")
         print(f"Document: {filename}")
         print(f"User: {user_id}")
         print(f"File Type: {file_type}")
         print(f"Image Size: {len(image_bytes)} bytes\n")
+
+        # Initialize progress tracking
+        self.update_progress(
+            job_id, "validating", "in_progress", "Starting document validation..."
+        )
 
         # Initialize state with all required fields
         initial_state: AgentState = {
             "image_bytes": image_bytes,
             "filename": filename,
             "file_type": file_type,
+            "job_id": job_id,
             "db_session": db_session,
             "user_id": user_id,
             "document_id": document_id,
@@ -1417,8 +1814,18 @@ Output the JSON object and nothing else."""
                 print(f"{'='*60}")
                 print(f"Issues: {', '.join(issues)}\n")
 
+                # Update progress to failed
+                self.update_progress(
+                    job_id,
+                    "validating",
+                    "failed",
+                    "Document validation failed",
+                    error=", ".join(issues),
+                )
+
                 return {
                     "success": False,
+                    "job_id": job_id,
                     "validation_failed": True,
                     "validation": final_state.get("validation", {}),
                     "clinical_data": {},
@@ -1432,9 +1839,15 @@ Output the JSON object and nothing else."""
             print(f"✅ ALL 4 AGENTS COMPLETED SUCCESSFULLY")
             print(f"{'='*60}\n")
 
+            # Mark as completed
+            self.update_progress(
+                job_id, "completed", "completed", "All agents completed successfully"
+            )
+
             # No verification agent, so never flag for review
             results = {
                 "success": True,
+                "job_id": job_id,
                 "validation": final_state.get("validation", {}),
                 "clinical_data": final_state.get("clinical_data", {}),
                 "summaries": final_state.get("summaries", {}),
@@ -1450,8 +1863,15 @@ Output the JSON object and nothing else."""
             import traceback
 
             traceback.print_exc()
+
+            # Update progress to failed
+            self.update_progress(
+                job_id, "validating", "failed", "Pipeline error", error=str(e)
+            )
+
             return {
                 "success": False,
+                "job_id": job_id,
                 "error": str(e),
                 "validation": {},
                 "clinical_data": {},

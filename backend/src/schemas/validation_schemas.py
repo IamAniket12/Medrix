@@ -314,6 +314,41 @@ class DetailedSummary(BaseModel):
     clinical_significance: str = ""
     action_items: List[str] = Field(default_factory=list)
 
+    @validator("action_items", pre=True, always=True)
+    def ensure_action_items_list(cls, v):
+        """Convert None/null to empty list."""
+        if v is None:
+            return []
+        return v
+
+    @validator("key_findings", pre=True, always=True)
+    def ensure_key_findings_list(cls, v):
+        """Convert None/null to empty list."""
+        if v is None:
+            return []
+        return v
+
+    @validator("treatment_plan", pre=True, always=True)
+    def ensure_treatment_plan_dict(cls, v):
+        """Convert None/null to empty dict and ensure nested fields are not null."""
+        if v is None:
+            return {}
+        if isinstance(v, dict):
+            # Replace any null values in nested fields with appropriate defaults
+            return {
+                k: (
+                    []
+                    if isinstance(val, type(None)) and k.endswith("_list")
+                    else (
+                        {}
+                        if isinstance(val, type(None)) and isinstance(v.get(k), dict)
+                        else val if val is not None else ""
+                    )
+                )
+                for k, val in v.items()
+            }
+        return v
+
 
 class SummaryResponse(BaseModel):
     """Complete summary response with validation."""

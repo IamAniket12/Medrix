@@ -17,7 +17,13 @@ from src.models import (
     TimelineEvent,
 )
 
+# Import documents router for upload functionality
+from src.api.v1.documents import router as documents_router
+
 router = APIRouter(prefix="/clinical", tags=["clinical"])
+
+# Include documents upload under /clinical/documents
+router.include_router(documents_router, prefix="")
 
 
 # ============================================================
@@ -402,5 +408,3 @@ async def get_document_details(
             for t in timeline
         ],
     }
-
-

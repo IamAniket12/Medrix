@@ -38,6 +38,7 @@ class DocumentUploadResponse(BaseModel):
 
     success: bool
     message: str
+    job_id: Optional[str] = None  # For progress tracking
     file_info: FileInfo
     extracted_data: Optional[ExtractedData] = None
 

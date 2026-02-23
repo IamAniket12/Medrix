@@ -2,9 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 
 interface DocumentDetail {
   document: {
@@ -47,7 +44,8 @@ export default function DocumentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fileUrl, setFileUrl] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<string>('all');
+  const [activeSection, setActiveSection] = useState<string>('summary');
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     if (documentId) {
@@ -70,13 +68,8 @@ export default function DocumentDetailPage() {
       setData(result);
       
       if (result.document.file_path) {
-        const urlResponse = await fetch(
-          `http://localhost:8000/api/v1/files/view/${result.document.file_path}`
-        );
-        if (urlResponse.ok) {
-          const urlData = await urlResponse.json();
-          setFileUrl(urlData.url);
-        }
+        const viewUrl = `http://localhost:8000/api/v1/files/view/${result.document.file_path}`;
+        setFileUrl(viewUrl);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -90,34 +83,107 @@ export default function DocumentDetailPage() {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading document...</p>
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #fffbf7 0%, #fef3ec 40%, #fff6f0 70%, #fffbf7 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '60px',
+            height: '60px',
+            border: '3px solid rgba(249,115,22,0.2)',
+            borderTop: '3px solid #f97316',
+            borderRadius: '50%',
+            margin: '0 auto 20px',
+            animation: 'spin 1s linear infinite'
+          }} />
+          <p style={{
+            color: '#78716c',
+            fontSize: '16px',
+            fontWeight: '500'
+          }}>Loading document intelligence...</p>
         </div>
+        <style dangerouslySetInnerHTML={{
+          __html: `@keyframes spin { to { transform: rotate(360deg); } }`
+        }} />
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center">
-        <Card className="max-w-md">
-          <CardHeader>
-            <CardTitle className="text-red-600">⚠️ Error</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-600">{error || 'Document not found'}</p>
-            <Button onClick={() => router.push('/documents')} className="mt-4 w-full">
-              Back to Documents
-            </Button>
-          </CardContent>
-        </Card>
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #fffbf7 0%, #fef3ec 40%, #fff6f0 70%, #fffbf7 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px'
+      }}>
+        <div style={{
+          background: '#ffffff',
+          border: '1.5px solid rgba(0,0,0,0.06)',
+          borderRadius: '24px',
+          padding: '40px',
+          maxWidth: '500px',
+          textAlign: 'center',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.06)'
+        }}>
+          <div style={{ fontSize: '64px', marginBottom: '20px' }}>⚠️</div>
+          <h2 style={{
+            color: '#dc2626',
+            fontSize: '24px',
+            fontWeight: '800',
+            marginBottom: '16px'
+          }}>Error Loading Document</h2>
+          <p style={{
+            color: '#78716c',
+            marginBottom: '32px',
+            lineHeight: '1.6'
+          }}>{error || 'Document not found'}</p>
+          <button
+            onClick={() => router.push('/documents')}
+            style={{
+              background: 'linear-gradient(135deg, #f97316 0%, #fb7185 100%)',
+              color: '#44403c',
+              border: 'none',
+              padding: '14px 32px',
+              borderRadius: '12px',
+              fontSize: '16px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              width: '100%'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 12px 40px rgba(249,115,22,0.35)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            ← Back to Documents
+          </button>
+        </div>
       </div>
     );
   }
@@ -126,395 +192,1239 @@ export default function DocumentDetailPage() {
   const isImage = document.mime_type?.startsWith('image/');
   const isPDF = document.mime_type === 'application/pdf';
 
+  const getUrgencyColor = (level: string) => {
+    switch (level?.toLowerCase()) {
+      case 'critical': return '#ef4444';
+      case 'high': return '#f97316';
+      case 'medium': return '#f59e0b';
+      default: return '#10b981';
+    }
+  };
+
+  const sections = [
+    { key: 'summary', label: 'AI Summary', icon: '✨', count: summary ? 1 : 0 },
+    { key: 'conditions', label: 'Conditions', icon: '🏥', count: clinical_data.conditions.length },
+    { key: 'medications', label: 'Medications', icon: '💊', count: clinical_data.medications.length },
+    { key: 'vitals', label: 'Vital Signs', icon: '❤️', count: clinical_data.vital_signs.length },
+    { key: 'labs', label: 'Lab Results', icon: '🔬', count: clinical_data.lab_results.length },
+    { key: 'procedures', label: 'Procedures', icon: '⚕️', count: clinical_data.procedures.length },
+    { key: 'allergies', label: 'Allergies', icon: '⚠️', count: clinical_data.allergies.length },
+  ];
+
+  // Function to check if lab value is outside normal range
+  const checkLabRange = (value: any, referenceRange: string | null): { isOutOfRange: boolean; status: 'HIGH' | 'LOW' | null } => {
+    if (!referenceRange || !value) return { isOutOfRange: false, status: null };
+    
+    const numValue = parseFloat(String(value).replace(/[^\d.-]/g, ''));
+    if (isNaN(numValue)) return { isOutOfRange: false, status: null };
+    
+    // Parse different range formats: "70-100", "< 5", "> 10", "≤ 5", "≥ 10"
+    const rangeStr = referenceRange.trim();
+    
+    // Check for "less than" patterns
+    const lessThanMatch = rangeStr.match(/^[<≤]\s*(\d+\.?\d*)/);
+    if (lessThanMatch) {
+      const maxValue = parseFloat(lessThanMatch[1]);
+      if (numValue >= maxValue) return { isOutOfRange: true, status: 'HIGH' };
+      return { isOutOfRange: false, status: null };
+    }
+    
+    // Check for "greater than" patterns
+    const greaterThanMatch = rangeStr.match(/^[>≥]\s*(\d+\.?\d*)/);
+    if (greaterThanMatch) {
+      const minValue = parseFloat(greaterThanMatch[1]);
+      if (numValue <= minValue) return { isOutOfRange: true, status: 'LOW' };
+      return { isOutOfRange: false, status: null };
+    }
+    
+    // Check for range patterns: "70-100", "70 - 100", "70 to 100"
+    const rangeMatch = rangeStr.match(/(\d+\.?\d*)\s*[-–to]+\s*(\d+\.?\d*)/i);
+    if (rangeMatch) {
+      const minValue = parseFloat(rangeMatch[1]);
+      const maxValue = parseFloat(rangeMatch[2]);
+      
+      if (numValue < minValue) return { isOutOfRange: true, status: 'LOW' };
+      if (numValue > maxValue) return { isOutOfRange: true, status: 'HIGH' };
+      return { isOutOfRange: false, status: null };
+    }
+    
+    return { isOutOfRange: false, status: null };
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #fffbf7 0%, #fef3ec 40%, #fff6f0 70%, #fffbf7 100%)',
+      padding: '24px',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      {/* Animated Background Effects */}
+      <div style={{
+        position: 'fixed',
+        top: '-50%',
+        right: '-10%',
+        width: '800px',
+        height: '800px',
+        background: 'radial-gradient(circle, rgba(249,115,22,0.12) 0%, transparent 70%)',
+        borderRadius: '50%',
+        filter: 'blur(60px)',
+        pointerEvents: 'none',
+        animation: 'float 20s ease-in-out infinite'
+      }} />
+      <div style={{
+        position: 'fixed',
+        bottom: '-30%',
+        left: '-10%',
+        width: '700px',
+        height: '700px',
+        background: 'radial-gradient(circle, rgba(251,113,133,0.1) 0%, transparent 70%)',
+        borderRadius: '50%',
+        filter: 'blur(60px)',
+        pointerEvents: 'none',
+        animation: 'float 25s ease-in-out infinite reverse'
+      }} />
+
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(30px, -30px) scale(1.1); }
+          }
+          @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+          }
+        `
+      }} />
+
+      <div style={{ maxWidth: '1600px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
         {/* Header */}
-        <div className="mb-8">
-          <Button
-            variant="outline"
+        <div style={{ marginBottom: '32px', animation: 'slideIn 0.6s ease-out' }}>
+          <button
             onClick={() => router.push('/documents')}
-            className="mb-4 bg-white hover:bg-gray-50 shadow-sm"
+            style={{
+              background: '#ffffff',
+              border: '1.5px solid rgba(0,0,0,0.08)',
+              color: '#44403c',
+              padding: '12px 24px',
+              borderRadius: '12px',
+              fontSize: '15px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginBottom: '24px'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.background = 'rgba(249,115,22,0.06)';
+              e.currentTarget.style.color = '#f97316';
+              e.currentTarget.style.transform = 'translateX(-4px)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.background = '#ffffff';
+              e.currentTarget.style.color = '#44403c';
+              e.currentTarget.style.transform = 'translateX(0)';
+            }}
           >
             ← Back to Documents
-          </Button>
-          <div className="bg-white rounded-xl shadow-md p-6 border border-gray-100">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              {document.filename}
-            </h1>
-            <p className="text-gray-600 mt-2 flex items-center gap-2">
-              <span>📅</span>
-              Uploaded on {formatDate(document.uploaded_at)}
-            </p>
+          </button>
+
+          {/* Document Header Card */}
+          <div style={{
+            background: '#ffffff',
+            border: '1.5px solid rgba(0,0,0,0.06)',
+            borderRadius: '24px',
+            padding: '32px',
+            position: 'relative',
+            overflow: 'hidden',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.06)'
+          }}>
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '4px',
+              background: 'linear-gradient(90deg, #f97316 0%, #fb7185 50%, #a78bfa 100%)',
+            }} />
+            
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '24px' }}>
+              <div style={{ flex: 1, minWidth: '300px' }}>
+                <div style={{
+                  display: 'inline-block',
+                  background: 'linear-gradient(135deg, #f97316 0%, #fb7185 100%)',
+                   color: '#44403c',
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  letterSpacing: '0.5px',
+                  marginBottom: '16px',
+                  textTransform: 'uppercase'
+                }}>
+                  {document.document_type || 'Medical Record'}
+                </div>
+                
+                <h1 style={{
+                  fontSize: '36px',
+                  fontWeight: '900',
+                  color: '#1c1917',
+                  marginBottom: '16px',
+                  lineHeight: '1.2',
+                  letterSpacing: '-0.02em'
+                }}>
+                  {document.filename}
+                </h1>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', color: '#78716c', fontSize: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '18px' }}>📅</span>
+                    <span>{formatDate(document.uploaded_at)}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '18px' }}>📦</span>
+                    <span>{formatFileSize(document.file_size)}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '18px' }}>📄</span>
+                    <span>{document.mime_type}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Document Preview Button */}
+              <button
+                onClick={() => setShowPreview(!showPreview)}
+                style={{
+                  background: showPreview 
+                    ? 'linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%)'
+                    : 'linear-gradient(135deg, #f97316 0%, #fb7185 100%)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '16px 32px',
+                  borderRadius: '16px',
+                  fontSize: '16px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  boxShadow: showPreview 
+                    ? '0 8px 32px rgba(139, 92, 246, 0.3)'
+                    : '0 8px 32px rgba(249,115,22,0.3)',
+                  minWidth: '200px',
+                  justifyContent: 'center'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-3px)';
+                  e.currentTarget.style.boxShadow = showPreview
+                    ? '0 12px 40px rgba(139, 92, 246, 0.4)'
+                    : '0 12px 40px rgba(249,115,22,0.4)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = showPreview
+                    ? '0 8px 32px rgba(139, 92, 246, 0.3)'
+                    : '0 8px 32px rgba(249,115,22,0.3)';
+                }}
+              >
+                <span style={{ fontSize: '24px' }}>{showPreview ? '🙈' : '👁️'}</span>
+                <span>{showPreview ? 'Hide Preview' : 'View Document'}</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Left: Document Preview (3 columns) */}
-          <div className="lg:col-span-3 space-y-6">
-            {/* Document Viewer */}
-            <Card className="shadow-lg border-none overflow-hidden">
-              <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                <CardTitle className="flex items-center gap-2">
-                  <span>📄</span>
-                  Document Preview
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 bg-gray-50">
-                {isImage && fileUrl && (
-                  <div className="rounded-lg overflow-hidden border-2 border-gray-200 bg-white shadow-inner">
-                    <img src={fileUrl} alt={document.filename} className="w-full h-auto" />
-                  </div>
-                )}
-                {isPDF && fileUrl && (
-                  <div className="rounded-lg border-2 border-gray-200 bg-white">
-                    <iframe src={fileUrl} className="w-full h-[700px]" title={document.filename} />
-                  </div>
-                )}
-                {!fileUrl && (isImage || isPDF) && (
-                  <div className="text-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading preview...</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+        {/* Document Preview (Collapsible) */}
+        {showPreview && (
+          <div style={{
+            marginBottom: '32px',
+            animation: 'slideIn 0.6s ease-out'
+          }}>
+            <div style={{
+              background: '#ffffff',
+              border: '1.5px solid rgba(0,0,0,0.06)',
+              borderRadius: '24px',
+              padding: '32px',
+              overflow: 'hidden',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.06)'
+            }}>
+              <h2 style={{
+                fontSize: '24px',
+                fontWeight: '800',
+                color: '#1c1917',
+                marginBottom: '24px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ fontSize: '28px' }}>📄</span>
+                Document Preview
+              </h2>
 
-            {/* AI Summary */}
-            {summary && (
-              <Card className="shadow-lg border-none overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-purple-600 via-pink-600 to-red-600 text-white">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-2">
-                      <span>✨</span>
-                      AI-Generated Summary
-                    </CardTitle>
-                    <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm">
-                      {(summary.urgency_level || 'routine').replace(/-/g, ' ').toUpperCase()}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-6 space-y-4">
-                  <p className="text-gray-700 leading-relaxed text-lg">{summary.brief}</p>
-                  
-                  {summary.key_findings && summary.key_findings.length > 0 && (
-                    <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-5 border-l-4 border-purple-500">
-                      <h4 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-                        <span>🔍</span>
-                        Key Clinical Findings
-                      </h4>
-                      <ul className="space-y-2">
-                        {summary.key_findings.map((finding, idx) => (
-                          <li key={idx} className="flex items-start gap-3 text-gray-700">
-                            <span className="text-purple-500 font-bold text-lg">•</span>
-                            <span className="flex-1">{finding}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Right: Clinical Data (2 columns) */}
-          <div className="lg:col-span-2">
-            <Card className="shadow-lg border-none overflow-hidden sticky top-4">
-              <CardHeader className="bg-gradient-to-r from-teal-600 via-cyan-600 to-blue-600 text-white">
-                <CardTitle className="flex items-center gap-2">
-                  <span className="text-2xl">🤖</span>
-                  Clinical Data Extraction
-                </CardTitle>
-                <CardDescription className="text-teal-50">
-                  AI-powered multi-agent medical information extraction
-                </CardDescription>
-              </CardHeader>
+              {isImage && fileUrl && (
+                <div style={{
+                  borderRadius: '16px',
+                  overflow: 'hidden',
+                  border: '1.5px solid rgba(0,0,0,0.08)',
+                  background: '#f9f9f7',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)'
+                }}>
+                  <img 
+                    src={fileUrl} 
+                    alt={document.filename} 
+                    style={{ width: '100%', height: 'auto', display: 'block' }} 
+                  />
+                </div>
+              )}
               
-              <CardContent className="p-0">
-                {/* Modern Filter Pills */}
-                <div className="p-4 bg-gradient-to-r from-gray-50 to-blue-50 border-b">
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { key: 'all', label: 'All', color: 'teal', count: null },
-                      { key: 'conditions', label: 'Conditions', color: 'blue', count: clinical_data.conditions.length },
-                      { key: 'medications', label: 'Meds', color: 'green', count: clinical_data.medications.length },
-                      { 
-                        key: 'vitals', 
-                        label: 'Vitals', 
-                        color: 'red', 
-                        count: clinical_data.vital_signs.reduce((sum: number, v: any) => {
-                          let count = 0;
-                          if (v.systolic_bp && v.diastolic_bp) count++;
-                          if (v.heart_rate) count++;
-                          if (v.temperature) count++;
-                          if (v.respiratory_rate) count++;
-                          if (v.oxygen_saturation) count++;
-                          if (v.weight) count++;
-                          if (v.height) count++;
-                          if (v.bmi) count++;
-                          return sum + count;
-                        }, 0)
-                      },
-                      { key: 'labs', label: 'Labs', color: 'purple', count: clinical_data.lab_results.length },
-                      { key: 'procedures', label: 'Procedures', color: 'orange', count: clinical_data.procedures.length },
-                      { key: 'allergies', label: 'Allergies', color: 'yellow', count: clinical_data.allergies.length },
-                    ].map(({ key, label, color, count }) => (
-                      <button
-                        key={key}
-                        onClick={() => setActiveSection(key)}
-                        className={`px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ${
-                          activeSection === key
-                            ? `bg-${color}-600 text-white shadow-lg scale-105`
-                            : 'bg-white text-gray-700 hover:bg-gray-100 shadow-sm'
-                        }`}
+              {isPDF && fileUrl && (
+                <div style={{
+                  borderRadius: '16px',
+                  overflow: 'hidden',
+                  border: '1.5px solid rgba(0,0,0,0.08)',
+                  background: 'white',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+                  height: '800px'
+                }}>
+                  <iframe 
+                    src={fileUrl} 
+                    style={{ width: '100%', height: '100%', border: 'none' }} 
+                    title={document.filename} 
+                  />
+                </div>
+              )}
+              
+              {!fileUrl && (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '60px 20px',
+                   color: '#78716c'
+                }}>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
+                  <p style={{ fontSize: '16px', fontWeight: '600' }}>Loading preview...</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Navigation Pills */}
+        <div style={{
+          background: '#ffffff',
+          border: '1.5px solid rgba(0,0,0,0.06)',
+          borderRadius: '20px',
+          padding: '16px',
+          marginBottom: '32px',
+          animation: 'slideIn 0.7s ease-out',
+          overflowX: 'auto',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.04)'
+        }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            {sections.map((section) => (
+              <button
+                key={section.key}
+                onClick={() => setActiveSection(section.key)}
+                style={{
+                  background: activeSection === section.key
+                    ? 'linear-gradient(135deg, #f97316 0%, #fb7185 100%)'
+                    : 'rgba(0,0,0,0.04)',
+                  color: activeSection === section.key ? 'white' : '#44403c',
+                  border: activeSection === section.key 
+                    ? '1px solid transparent'
+                    : '1px solid rgba(0,0,0,0.08)',
+                  padding: '12px 20px',
+                  borderRadius: '12px',
+                  fontSize: '14px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  whiteSpace: 'nowrap',
+                  boxShadow: activeSection === section.key
+                    ? '0 4px 16px rgba(249,115,22,0.3)'
+                    : 'none'
+                }}
+                onMouseOver={(e) => {
+                  if (activeSection !== section.key) {
+                    e.currentTarget.style.background = 'rgba(249,115,22,0.08)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (activeSection !== section.key) {
+                      e.currentTarget.style.background = 'rgba(0,0,0,0.04)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }
+                }}
+              >
+                <span style={{ fontSize: '18px' }}>{section.icon}</span>
+                <span>{section.label}</span>
+                {section.count > 0 && (
+                  <span style={{
+                    background: activeSection === section.key 
+                      ? 'rgba(255, 255, 255, 0.3)'
+                      : 'rgba(249,115,22,0.15)',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    fontWeight: '800'
+                  }}>
+                    {section.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content Area */}
+        <div style={{ animation: 'fadeIn 0.8s ease-out' }}>
+          {/* AI Summary */}
+          {activeSection === 'summary' && summary && (
+            <div style={{
+              background: '#ffffff',
+              border: '1.5px solid rgba(0,0,0,0.06)',
+              borderRadius: '24px',
+              padding: '32px',
+              marginBottom: '24px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.05)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
+                <h2 style={{
+                  fontSize: '28px',
+                  fontWeight: '900',
+                  color: '#1c1917',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px'
+                }}>
+                  <span style={{ fontSize: '32px' }}>✨</span>
+                  AI-Generated Clinical Summary
+                </h2>
+                <div style={{
+                  background: `linear-gradient(135deg, ${getUrgencyColor(summary.urgency_level)} 0%, ${getUrgencyColor(summary.urgency_level)}dd 100%)`,
+                  color: 'white',
+                  padding: '8px 16px',
+                  borderRadius: '12px',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  letterSpacing: '0.5px',
+                  textTransform: 'uppercase',
+                  boxShadow: `0 4px 20px ${getUrgencyColor(summary.urgency_level)}40`
+                }}>
+                  {summary.urgency_level || 'routine'}
+                </div>
+              </div>
+
+              <div style={{
+                background: 'rgba(249,115,22,0.06)',
+                border: '1px solid rgba(249,115,22,0.18)',
+                borderRadius: '16px',
+                padding: '24px',
+                marginBottom: '32px',
+                borderLeft: '4px solid #f97316'
+              }}>
+                <p style={{
+                  color: '#1c1917',
+                  fontSize: '18px',
+                  lineHeight: '1.8',
+                  margin: 0
+                }}>
+                  {summary.brief}
+                </p>
+              </div>
+
+              {summary.key_findings && summary.key_findings.length > 0 && (
+                <div style={{ marginBottom: '32px' }}>
+                  <h3 style={{
+                    fontSize: '20px',
+                    fontWeight: '800',
+                    color: '#1c1917',
+                    marginBottom: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}>
+                    <span style={{ fontSize: '24px' }}>🔍</span>
+                    Key Clinical Findings
+                  </h3>
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    {summary.key_findings.map((finding, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          background: 'rgba(139, 92, 246, 0.06)',
+                          border: '1px solid rgba(139, 92, 246, 0.18)',
+                          borderRadius: '12px',
+                          padding: '16px 20px',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '12px',
+                          transition: 'all 0.3s ease'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.background = 'rgba(139, 92, 246, 0.06)';
+                          e.currentTarget.style.transform = 'translateX(4px)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.background = 'rgba(139, 92, 246, 0.06)';
+                          e.currentTarget.style.transform = 'translateX(0)';
+                        }}
                       >
-                        {label} {count !== null && `(${count})`}
-                      </button>
+                        <span style={{
+                          color: '#8b5cf6',
+                          fontSize: '24px',
+                          fontWeight: '900',
+                          flexShrink: 0
+                        }}>•</span>
+                        <span style={{
+                          color: '#1c1917',
+                          fontSize: '16px',
+                          lineHeight: '1.6',
+                          flex: 1
+                        }}>
+                          {finding}
+                        </span>
+                      </div>
                     ))}
                   </div>
                 </div>
+              )}
 
-                {/* Content Area with Smooth Animations */}
-                <div className="p-5 max-h-[750px] overflow-y-auto bg-white">
-                  {/* All View */}
-                  {activeSection === 'all' && (
-                    <div className="space-y-5 animate-fadeIn">
-                      {/* Conditions */}
-                      {clinical_data.conditions.length > 0 && (
-                        <section>
-                          <h3 className="font-bold text-blue-700 mb-3 flex items-center gap-2 text-sm uppercase tracking-wide">
-                            <span className="text-lg">🏥</span>
-                            Conditions ({clinical_data.conditions.length})
-                          </h3>
-                          <div className="space-y-2">
-                            {clinical_data.conditions.map((cond: any) => (
-                              <div key={cond.id} className="bg-gradient-to-r from-blue-50 to-blue-100/50 border-l-4 border-blue-500 p-4 rounded-r-lg hover:shadow-md transition-all">
-                                <div className="font-semibold text-gray-900">{cond.name}</div>
-                                {cond.status && (
-                                  <Badge className="mt-2 bg-blue-100 text-blue-800 border-blue-200">{cond.status}</Badge>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </section>
+              {summary.clinical_overview && (
+                <div style={{
+                  background: 'rgba(6, 182, 212, 0.06)',
+                  border: '1px solid rgba(6, 182, 212, 0.18)',
+                  borderRadius: '16px',
+                  padding: '24px',
+                  marginBottom: '24px'
+                }}>
+                  <h3 style={{
+                    fontSize: '18px',
+                    fontWeight: '800',
+                        color: '#06b6d4',
+                    marginBottom: '12px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}>
+                    Clinical Overview
+                  </h3>
+                  <p style={{
+                    color: '#1c1917',
+                    fontSize: '15px',
+                    lineHeight: '1.7',
+                    margin: 0
+                  }}>
+                    {summary.clinical_overview}
+                  </p>
+                </div>
+              )}
+
+              {summary.action_items && summary.action_items.length > 0 && (
+                <div>
+                  <h3 style={{
+                    fontSize: '20px',
+                    fontWeight: '800',
+                    color: '#1c1917',
+                    marginBottom: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                  }}>
+                    <span style={{ fontSize: '24px' }}>📋</span>
+                    Action Items
+                  </h3>
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    {summary.action_items.map((item, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          background: 'rgba(16, 185, 129, 0.06)',
+                          border: '1px solid rgba(16, 185, 129, 0.18)',
+                          borderRadius: '12px',
+                          padding: '16px 20px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '12px'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          style={{
+                            width: '20px',
+                            height: '20px',
+                            cursor: 'pointer',
+                            accentColor: '#10b981'
+                          }}
+                        />
+                        <span style={{
+                          color: '#1c1917',
+                          fontSize: '16px',
+                          flex: 1
+                        }}>
+                          {item}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Conditions */}
+          {activeSection === 'conditions' && (
+            <div style={{
+              background: '#ffffff',
+              border: '1.5px solid rgba(0,0,0,0.06)',
+              borderRadius: '24px',
+              padding: '32px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.05)'
+            }}>
+              <h2 style={{
+                fontSize: '28px',
+                fontWeight: '900',
+                color: '#1c1917',
+                marginBottom: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ fontSize: '32px' }}>🏥</span>
+                Medical Conditions ({clinical_data.conditions.length})
+              </h2>
+
+              {clinical_data.conditions.length > 0 ? (
+                <div style={{ display: 'grid', gap: '16px' }}>
+                  {clinical_data.conditions.map((cond: any) => (
+                    <div
+                      key={cond.id}
+                      style={{
+                        background: 'rgba(249,115,22,0.04)',
+                        border: '1px solid rgba(249,115,22,0.15)',
+                        borderLeft: '4px solid #f97316',
+                        borderRadius: '16px',
+                        padding: '24px',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-4px)';
+                        e.currentTarget.style.boxShadow = '0 8px 32px rgba(249,115,22,0.15)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      <div style={{
+                        fontSize: '20px',
+                        fontWeight: '700',
+                         color: '#1c1917',
+                        marginBottom: cond.status || cond.onset_date ? '16px' : 0
+                      }}>
+                        {cond.name}
+                      </div>
+                      
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                        {cond.status && (
+                          <span style={{
+                            background: 'rgba(249,115,22,0.12)',
+                            color: '#f97316',
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            fontWeight: '700',
+                            textTransform: 'capitalize'
+                          }}>
+                            {cond.status}
+                          </span>
+                        )}
+                        {cond.onset_date && (
+                          <span style={{
+                            color: '#78716c',
+                            fontSize: '14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                          }}>
+                            <span>📅</span>
+                            Since: {new Date(cond.onset_date).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#a8a29e' }}>
+                  <div style={{ fontSize: '64px', marginBottom: '16px' }}>🏥</div>
+                  <p style={{ fontSize: '16px', fontWeight: '600', color: '#78716c' }}>No conditions extracted</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Medications */}
+          {activeSection === 'medications' && (
+            <div style={{
+              background: '#ffffff',
+              border: '1.5px solid rgba(0,0,0,0.06)',
+              borderRadius: '24px',
+              padding: '32px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.05)'
+            }}>
+              <h2 style={{
+                fontSize: '28px',
+                fontWeight: '900',
+                color: '#1c1917',
+                marginBottom: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ fontSize: '32px' }}>💊</span>
+                Medications ({clinical_data.medications.length})
+              </h2>
+
+              {clinical_data.medications.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
+                  {clinical_data.medications.map((med: any) => (
+                    <div
+                      key={med.id}                      style={{
+                        background: 'rgba(16,185,129,0.05)',
+                        border: '1px solid rgba(16,185,129,0.18)',
+                        borderLeft: '4px solid #10b981',
+                        borderRadius: '16px',
+                        padding: '24px',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-4px)';
+                        e.currentTarget.style.boxShadow = '0 8px 32px rgba(16,185,129,0.2)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      <div style={{
+                        fontSize: '20px',
+                        fontWeight: '700',
+                         color: '#1c1917',
+                        marginBottom: '12px'
+                      }}>
+                        {med.name}
+                      </div>
+                      
+                      {(med.dosage || med.frequency || med.route) && (
+              <div style={{ color: '#78716c', fontSize: '15px', marginBottom: '12px', lineHeight: '1.6' }}>
+                          {med.dosage && <div>💊 {med.dosage}</div>}
+                          {med.route && <div>📍 {med.route}</div>}
+                        </div>
                       )}
 
-                      {/* Medications */}
-                      {clinical_data.medications.length > 0 && (
-                        <section>
-                          <h3 className="font-bold text-green-700 mb-3 flex items-center gap-2 text-sm uppercase tracking-wide">
-                            <span className="text-lg">💊</span>
-                            Medications ({clinical_data.medications.length})
-                          </h3>
-                          <div className="space-y-2">
-                            {clinical_data.medications.map((med: any) => (
-                              <div key={med.id} className="bg-gradient-to-r from-green-50 to-green-100/50 border-l-4 border-green-500 p-4 rounded-r-lg hover:shadow-md transition-all">
-                                <div className="font-semibold text-gray-900">{med.name}</div>
-                                {(med.dosage || med.frequency) && (
-                                  <div className="text-sm text-gray-600 mt-1">
-                                    {med.dosage} {med.frequency && `• ${med.frequency}`}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </section>
+                      {med.status && (
+                        <span style={{
+                          background: 'rgba(16,185,129,0.12)',
+                          color: '#34d399',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          textTransform: 'capitalize',
+                          display: 'inline-block'
+                        }}>
+                          {med.status}
+                        </span>
                       )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#a8a29e' }}>
+                  <div style={{ fontSize: '64px', marginBottom: '16px' }}>💊</div>
+                  <p style={{ fontSize: '16px', fontWeight: '600', color: '#78716c' }}>No medications extracted</p>
+                </div>
+              )}
+            </div>
+          )}
 
-                      {/* Vital Signs */}
-                      {clinical_data.vital_signs.length > 0 && (
-                        <section>
-                          <h3 className="font-bold text-red-700 mb-3 flex items-center gap-2 text-sm uppercase tracking-wide">
-                            <span className="text-lg">❤️</span>
-                            Vital Signs
-                          </h3>
-                          <div className="grid grid-cols-2 gap-3">
-                            {clinical_data.vital_signs.map((vital: any) => {
-                              // Transform flattened DB format to displayable vitals
-                              const vitalsToDisplay = [];
-                              
-                              if (vital.systolic_bp && vital.diastolic_bp) {
-                                vitalsToDisplay.push({
-                                  type: 'Blood Pressure',
-                                  value: `${vital.systolic_bp}/${vital.diastolic_bp}`,
-                                  unit: 'mmHg'
-                                });
-                              }
-                              
-                              if (vital.heart_rate) {
-                                vitalsToDisplay.push({
-                                  type: 'Heart Rate',
-                                  value: vital.heart_rate,
-                                  unit: 'bpm'
-                                });
-                              }
-                              
-                              if (vital.temperature) {
-                                vitalsToDisplay.push({
-                                  type: 'Temperature',
-                                  value: vital.temperature,
-                                  unit: vital.temperature_unit || '°F'
-                                });
-                              }
-                              
-                              if (vital.respiratory_rate) {
-                                vitalsToDisplay.push({
-                                  type: 'Respiratory Rate',
-                                  value: vital.respiratory_rate,
-                                  unit: '/min'
-                                });
-                              }
-                              
-                              if (vital.oxygen_saturation) {
-                                vitalsToDisplay.push({
-                                  type: 'O₂ Saturation',
-                                  value: vital.oxygen_saturation,
-                                  unit: '%'
-                                });
-                              }
-                              
-                              if (vital.weight) {
-                                vitalsToDisplay.push({
-                                  type: 'Weight',
-                                  value: vital.weight,
-                                  unit: vital.weight_unit || 'kg'
-                                });
-                              }
-                              
-                              if (vital.height) {
-                                vitalsToDisplay.push({
-                                  type: 'Height',
-                                  value: vital.height,
-                                  unit: vital.height_unit || 'cm'
-                                });
-                              }
-                              
-                              if (vital.bmi) {
-                                vitalsToDisplay.push({
-                                  type: 'BMI',
-                                  value: vital.bmi,
-                                  unit: 'kg/m²'
-                                });
-                              }
-                              
-                              return vitalsToDisplay.map((v, idx) => (
-                                <div key={`${vital.id}-${idx}`} className="bg-gradient-to-br from-red-50 to-red-100/50 border-l-4 border-red-500 p-3 rounded-r-lg hover:shadow-md transition-all">
-                                  <div className="text-xs text-gray-600 uppercase tracking-wide">{v.type}</div>
-                                  <div className="text-2xl font-bold text-gray-900 mt-1">{v.value}</div>
-                                  <div className="text-xs text-gray-500 mt-1">{v.unit}</div>
-                                  {vital.measurement_date && (
-                                    <div className="text-xs text-gray-400 mt-1">
-                                      {new Date(vital.measurement_date).toLocaleDateString()}
-                                    </div>
-                                  )}
-                                </div>
-                              ));
-                            })}
+          {/* Vital Signs */}
+          {activeSection === 'vitals' && (
+            <div style={{
+              background: '#ffffff',
+              border: '1.5px solid rgba(0,0,0,0.06)',
+              borderRadius: '24px',
+              padding: '32px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.05)'
+            }}>
+              <h2 style={{
+                fontSize: '28px',
+                fontWeight: '900',
+                color: '#1c1917',
+                marginBottom: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ fontSize: '32px' }}>❤️</span>
+                Vital Signs
+              </h2>
+
+              {clinical_data.vital_signs.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
+                  {clinical_data.vital_signs.map((vital: any) => {
+                    const vitalsToDisplay = [];
+                    
+                    if (vital.systolic_bp && vital.diastolic_bp) {
+                      vitalsToDisplay.push({
+                        type: 'Blood Pressure',
+                        value: `${vital.systolic_bp}/${vital.diastolic_bp}`,
+                        unit: 'mmHg',
+                        icon: '🩸'
+                      });
+                    }
+                    
+                    if (vital.heart_rate) vitalsToDisplay.push({ type: 'Heart Rate', value: vital.heart_rate, unit: 'bpm', icon: '❤️' });
+                    if (vital.temperature) vitalsToDisplay.push({ type: 'Temperature', value: vital.temperature, unit: vital.temperature_unit || '°F', icon: '🌡️' });
+                    if (vital.respiratory_rate) vitalsToDisplay.push({ type: 'Respiratory Rate', value: vital.respiratory_rate, unit: '/min', icon: '🫁' });
+                    if (vital.oxygen_saturation) vitalsToDisplay.push({ type: 'O₂ Saturation', value: vital.oxygen_saturation, unit: '%', icon: '💨' });
+                    if (vital.weight) vitalsToDisplay.push({ type: 'Weight', value: vital.weight, unit: vital.weight_unit || 'kg', icon: '⚖️' });
+                    if (vital.height) vitalsToDisplay.push({ type: 'Height', value: vital.height, unit: vital.height_unit || 'cm', icon: '📏' });
+                    if (vital.bmi) vitalsToDisplay.push({ type: 'BMI', value: vital.bmi, unit: 'kg/m²', icon: '📊' });
+                    
+                    return vitalsToDisplay.map((v, idx) => (
+                      <div
+                        key={`${vital.id}-${idx}`}
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%)',
+                          border: '1px solid rgba(239, 68, 68, 0.2)',
+                          borderLeft: '4px solid #ef4444',
+                          borderRadius: '16px',
+                          padding: '24px',
+                          transition: 'all 0.3s ease'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-4px)';
+                          e.currentTarget.style.boxShadow = '0 8px 32px rgba(239, 68, 68, 0.3)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        <div style={{
+                          fontSize: '11px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                          color: '#78716c',
+                          marginBottom: '8px',
+                          fontWeight: '700'
+                        }}>
+                          {v.icon} {v.type}
+                        </div>
+                        <div style={{
+                          fontSize: '36px',
+                          fontWeight: '900',
+                          color: '#1c1917',
+                          marginBottom: '4px'
+                        }}>
+                          {v.value}
+                        </div>
+                        <div style={{
+                          fontSize: '14px',
+                          color: '#78716c',
+                          fontWeight: '600'
+                        }}>
+                          {v.unit}
+                        </div>
+                        {vital.measurement_date && (
+                          <div style={{
+                            marginTop: '12px',
+                            paddingTop: '12px',
+                             borderTop: '1px solid rgba(0,0,0,0.06)',
+                            fontSize: '12px',
+                             color: '#a8a29e'
+                          }}>
+                            📅 {new Date(vital.measurement_date).toLocaleDateString()}
                           </div>
-                        </section>
-                      )}
+                        )}
+                      </div>
+                    ));
+                  })}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#a8a29e' }}>
+                  <div style={{ fontSize: '64px', marginBottom: '16px' }}>❤️</div>
+                  <p style={{ fontSize: '16px', fontWeight: '600', color: '#78716c' }}>No vital signs extracted</p>
+                </div>
+              )}
+            </div>
+          )}
 
-                      {/* Labs (Top 5) */}
-                      {clinical_data.lab_results.length > 0 && (
-                        <section>
-                          <h3 className="font-bold text-purple-700 mb-3 flex items-center gap-2 text-sm uppercase tracking-wide">
-                            <span className="text-lg">🔬</span>
-                            Lab Results ({clinical_data.lab_results.length})
-                          </h3>
-                          <div className="space-y-2">
-                            {clinical_data.lab_results.slice(0, 5).map((lab: any) => (
-                              <div key={lab.id} className={`border-l-4 p-4 rounded-r-lg hover:shadow-md transition-all ${
-                                lab.is_abnormal ? 'bg-gradient-to-r from-red-50 to-red-100/50 border-red-500' : 'bg-gradient-to-r from-purple-50 to-purple-100/50 border-purple-500'
-                              }`}>
-                                <div className="flex justify-between items-start mb-2">
-                                  <div className="font-semibold text-gray-900 text-sm">{lab.test_name}</div>
-                                  {lab.is_abnormal && <Badge className="bg-red-600 text-white">!</Badge>}
-                                </div>
-                                <div className="text-2xl font-bold text-gray-900">
-                                  {lab.value} <span className="text-base text-gray-600">{lab.unit}</span>
-                                </div>
+          {/* Lab Results */}
+          {activeSection === 'labs' && (
+            <div style={{
+              background: '#ffffff',
+              border: '1.5px solid rgba(0,0,0,0.06)',
+              borderRadius: '24px',
+              padding: '32px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.05)'
+            }}>
+              <h2 style={{
+                fontSize: '28px',
+                fontWeight: '900',
+                color: '#1c1917',
+                marginBottom: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ fontSize: '32px' }}>🔬</span>
+                Laboratory Results ({clinical_data.lab_results.length})
+              </h2>
+
+              {clinical_data.lab_results.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+                  {clinical_data.lab_results.map((lab: any) => {
+                    const rangeCheck = checkLabRange(lab.value, lab.reference_range);
+                    const isAbnormal = lab.is_abnormal || rangeCheck.isOutOfRange;
+                    
+                    return (
+                      <div
+                        key={lab.id}
+                        style={{
+                          background: isAbnormal
+                            ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.08) 100%)'
+                            : 'rgba(139,92,246,0.04)',
+                          border: isAbnormal 
+                            ? '1px solid rgba(239, 68, 68, 0.3)'
+                            : '1px solid rgba(139,92,246,0.15)',
+                          borderLeft: isAbnormal 
+                            ? '4px solid #ef4444'
+                            : '4px solid #8b5cf6',
+                          borderRadius: '16px',
+                          padding: '24px',
+                          transition: 'all 0.3s ease',
+                          position: 'relative'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-4px)';
+                          e.currentTarget.style.boxShadow = isAbnormal
+                            ? '0 8px 32px rgba(239, 68, 68, 0.3)'
+                            : '0 8px 32px rgba(139,92,246,0.15)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        {isAbnormal && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '16px',
+                            right: '16px',
+                            background: '#ef4444',
+                             color: 'white',
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: '900',
+                            fontSize: '16px',
+                            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)'
+                          }}>
+                            !
+                          </div>
+                        )}
+                        
+                        <div style={{
+                          fontSize: '14px',
+                          fontWeight: '700',
+                           color: '#78716c',
+                          marginBottom: '12px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>
+                          {lab.test_name}
+                        </div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', marginBottom: '4px' }}>
+                          <div style={{
+                            fontSize: '40px',
+                            fontWeight: '900',
+                             color: '#44403c'
+                          }}>
+                            {lab.value}
+                          </div>
+                          
+                          {rangeCheck.status && (
+                            <div style={{
+                              background: rangeCheck.status === 'HIGH' 
+                                ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                                : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                               color: 'white',
+                              padding: '4px 10px',
+                              borderRadius: '8px',
+                              fontSize: '12px',
+                              fontWeight: '800',
+                              letterSpacing: '0.5px',
+                              boxShadow: rangeCheck.status === 'HIGH'
+                                ? '0 4px 12px rgba(239, 68, 68, 0.4)'
+                                : '0 4px 12px rgba(249, 115, 22, 0.4)',
+                              animation: 'pulse 2s ease-in-out infinite'
+                            }}>
+                              {rangeCheck.status === 'HIGH' ? '↑ HIGH' : '↓ LOW'}
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div style={{
+                          fontSize: '16px',
+                           color: '#78716c',
+                          fontWeight: '600',
+                          marginBottom: '16px'
+                        }}>
+                          {lab.unit}
+                        </div>
+
+                        {(lab.reference_range || lab.test_date) && (
+                          <div style={{
+                            paddingTop: '16px',
+                             borderTop: '1px solid rgba(0,0,0,0.06)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            fontSize: '13px',
+                             color: '#a8a29e'
+                          }}>
+                            {lab.reference_range && (
+                              <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                 color: rangeCheck.isOutOfRange ? '#fca5a5' : '#a8a29e',
+                                fontWeight: rangeCheck.isOutOfRange ? '700' : '400'
+                              }}>
+                                📊 Normal: {lab.reference_range}
                               </div>
-                            ))}
-                            {clinical_data.lab_results.length > 5 && (
-                              <p className="text-center text-sm text-gray-500 italic pt-2">
-                                +{clinical_data.lab_results.length - 5} more • Click "Labs" to view all
-                              </p>
                             )}
+                            {lab.test_date && <div>📅 {new Date(lab.test_date).toLocaleDateString()}</div>}
                           </div>
-                        </section>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#a8a29e' }}>
+                  <div style={{ fontSize: '64px', marginBottom: '16px' }}>🔬</div>
+                  <p style={{ fontSize: '16px', fontWeight: '600', color: '#78716c' }}>No lab results extracted</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Procedures */}
+          {activeSection === 'procedures' && (
+            <div style={{
+              background: '#ffffff',
+              border: '1.5px solid rgba(0,0,0,0.06)',
+              borderRadius: '24px',
+              padding: '32px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.05)'
+            }}>
+              <h2 style={{
+                fontSize: '28px',
+                fontWeight: '900',
+                color: '#1c1917',
+                marginBottom: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ fontSize: '32px' }}>⚕️</span>
+                Medical Procedures ({clinical_data.procedures.length})
+              </h2>
+
+              {clinical_data.procedures.length > 0 ? (
+                <div style={{ display: 'grid', gap: '16px' }}>
+                  {clinical_data.procedures.map((proc: any) => (
+                    <div
+                      key={proc.id}
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(249, 115, 22, 0.1) 0%, rgba(249, 115, 22, 0.05) 100%)',
+                        border: '1px solid rgba(249, 115, 22, 0.2)',
+                        borderLeft: '4px solid #f97316',
+                        borderRadius: '16px',
+                        padding: '24px',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-4px)';
+                        e.currentTarget.style.boxShadow = '0 8px 32px rgba(249, 115, 22, 0.3)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      <div style={{
+                        fontSize: '20px',
+                        fontWeight: '700',
+                         color: '#1c1917',
+                        marginBottom: '12px'
+                      }}>
+                        {proc.procedure_name}
+                      </div>
+                      
+                      {proc.outcome && (
+                        <div style={{
+                           color: '#78716c',
+                          fontSize: '15px',
+                          lineHeight: '1.6',
+                          marginBottom: '12px'
+                        }}>
+                          {proc.outcome}
+                        </div>
                       )}
 
-                      {/* Procedures */}
-                      {clinical_data.procedures.length > 0 && (
-                        <section>
-                          <h3 className="font-bold text-orange-700 mb-3 flex items-center gap-2 text-sm uppercase tracking-wide">
-                            <span className="text-lg">⚕️</span>
-                            Procedures ({clinical_data.procedures.length})
-                          </h3>
-                          <div className="space-y-2">
-                            {clinical_data.procedures.map((proc: any) => (
-                              <div key={proc.id} className="bg-gradient-to-r from-orange-50 to-orange-100/50 border-l-4 border-orange-500 p-4 rounded-r-lg hover:shadow-md transition-all">
-                                <div className="font-semibold text-gray-900">{proc.procedure_name}</div>
-                                {proc.outcome && (
-                                  <div className="text-sm text-gray-600 mt-1">{proc.outcome}</div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </section>
-                      )}
-
-                      {/* Allergies */}
-                      {clinical_data.allergies.length > 0 && (
-                        <section>
-                          <h3 className="font-bold text-yellow-700 mb-3 flex items-center gap-2 text-sm uppercase tracking-wide">
-                            <span className="text-lg">⚠️</span>
-                            Allergies ({clinical_data.allergies.length})
-                          </h3>
-                          <div className="space-y-2">
-                            {clinical_data.allergies.map((allergy: any) => (
-                              <div key={allergy.id} className="bg-gradient-to-r from-yellow-50 to-yellow-100/50 border-l-4 border-yellow-500 p-4 rounded-r-lg hover:shadow-md transition-all">
-                                <div className="font-semibold text-gray-900">{allergy.allergen}</div>
-                                {allergy.reaction && (
-                                  <div className="text-sm text-gray-600 mt-1">{allergy.reaction}</div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </section>
-                      )}
-
-                      {/* Empty State */}
-                      {clinical_data.conditions.length === 0 && 
-                       clinical_data.medications.length === 0 && 
-                       clinical_data.vital_signs.length === 0 && 
-                       clinical_data.lab_results.length === 0 && 
-                       clinical_data.procedures.length === 0 && 
-                       clinical_data.allergies.length === 0 && (
-                        <div className="text-center py-16">
-                          <span className="text-6xl mb-4 block">🤷</span>
-                          <p className="text-lg font-semibold text-gray-600">No Clinical Data Extracted</p>
-                          <p className="text-sm text-gray-500 mt-2">The AI couldn't extract medical information from this document</p>
+                      {proc.procedure_date && (
+                        <div style={{
+                           color: '#a8a29e',
+                          fontSize: '14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          <span>📅</span>
+                          {new Date(proc.procedure_date).toLocaleDateString()}
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* Individual Section Views */}
-                  {activeSection !== 'all' && (
-                    <div className="animate-fadeIn">
-                      {/* You can add detailed individual views for each section here */}
-                      <p className="text-gray-500 text-center py-8">
-                        Detailed view for {activeSection} coming soon...
-                      </p>
-                    </div>
-                  )}
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#a8a29e' }}>
+                  <div style={{ fontSize: '64px', marginBottom: '16px' }}>⚕️</div>
+                  <p style={{ fontSize: '16px', fontWeight: '600', color: '#78716c' }}>No procedures extracted</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Allergies */}
+          {activeSection === 'allergies' && (
+            <div style={{
+              background: '#ffffff',
+              border: '1.5px solid rgba(0,0,0,0.06)',
+              borderRadius: '24px',
+              padding: '32px',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.05)'
+            }}>
+              <h2 style={{
+                fontSize: '28px',
+                fontWeight: '900',
+                color: '#1c1917',
+                marginBottom: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}>
+                <span style={{ fontSize: '32px' }}>⚠️</span>
+                Allergies & Adverse Reactions ({clinical_data.allergies.length})
+              </h2>
+
+              {clinical_data.allergies.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+                  {clinical_data.allergies.map((allergy: any) => (
+                    <div
+                      key={allergy.id}
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(234, 179, 8, 0.1) 0%, rgba(234, 179, 8, 0.05) 100%)',
+                        border: '1px solid rgba(234, 179, 8, 0.3)',
+                        borderLeft: '4px solid #eab308',
+                        borderRadius: '16px',
+                        padding: '24px',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-4px)';
+                        e.currentTarget.style.boxShadow = '0 8px 32px rgba(234, 179, 8, 0.3)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
+                      <div style={{
+                        fontSize: '20px',
+                        fontWeight: '700',
+                         color: '#1c1917',
+                        marginBottom: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        ⚠️ {allergy.allergen}
+                      </div>
+                      
+                      {allergy.reaction && (
+                        <div style={{
+                           color: '#78716c',
+                          fontSize: '15px',
+                          lineHeight: '1.6',
+                          marginBottom: '12px'
+                        }}>
+                           <strong style={{ color: '#78716c' }}>Reaction:</strong> {allergy.reaction}
+                        </div>
+                      )}
+
+                      {allergy.severity && (
+                        <span style={{
+                          background: allergy.severity.toLowerCase() === 'severe' 
+                            ? 'rgba(239, 68, 68, 0.2)'
+                            : 'rgba(234, 179, 8, 0.2)',
+                          color: allergy.severity.toLowerCase() === 'severe' ? '#991b1b' : '#854d0e',
+                          padding: '6px 12px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          textTransform: 'uppercase',
+                          display: 'inline-block'
+                        }}>
+                          {allergy.severity}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px 20px', color: '#a8a29e' }}>
+                  <div style={{ fontSize: '64px', marginBottom: '16px' }}>⚠️</div>
+                  <p style={{ fontSize: '16px', fontWeight: '600', color: '#78716c' }}>No allergies recorded</p>
+                  <p style={{ fontSize: '14px', marginTop: '8px' }}>This is good news! 🎉</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,0 +1,13 @@
+# MedGemma HPC Server Requirements
+# Install with: pip install -r requirements-hpc.txt
+
+torch>=2.0.0
+transformers>=4.41.0
+accelerate>=0.30.0
+bitsandbytes
+pillow
+fastapi
+uvicorn[standard]
+pyngrok
+httpx
+python-multipart

@@ -21,10 +21,14 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # Google Cloud Configuration
-    google_cloud_project: str = "medrix-ai"
+    google_cloud_project: str = "medrix-medgemma"
     vertex_ai_location: str = "europe-west4"
     medgemma_endpoint_id: str = "mg-endpoint-3c8c9ae8-c8f7-4f75-ac46-b4779dc43924"
     google_application_credentials: Optional[str] = None
+
+    # Colab / generic HTTP MedGemma endpoint (overrides Vertex AI when set)
+    # e.g. https://xxxx.ngrok-free.app  (printed by colab_medgemma_deploy.py)
+    medgemma_endpoint_url: Optional[str] = None
 
     # Google Cloud Storage Configuration
     gcs_bucket_name: str

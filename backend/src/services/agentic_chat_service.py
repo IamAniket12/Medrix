@@ -12,6 +12,7 @@ Stages:
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -21,6 +22,9 @@ from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 
 from src.services.medgemma_service import MedGemmaService
 from src.services.embeddings_service import embeddings_service
+
+# Module-level logger
+logger = logging.getLogger(__name__)
 
 
 class StructuredAnswer(BaseModel):
@@ -41,6 +45,7 @@ class AgenticChatService:
             .assign(response=RunnableLambda(self._call_model))
             .assign(normalized=RunnableLambda(self._normalize_output))
         )
+        logger.info("[RAG Service] AgenticChatService initialized")
 
     async def run(
         self,
@@ -49,6 +54,7 @@ class AgenticChatService:
         question: str,
         conversation_history: Optional[List[Dict[str, Any]]],
     ) -> Dict[str, Any]:
+        logger.info(f"[RAG Service] Starting RAG pipeline for user: {user_id}")
         base_state = {
             "db": db,
             "user_id": user_id,
@@ -56,6 +62,7 @@ class AgenticChatService:
             "conversation_history": conversation_history or [],
         }
         result = await self.chain.ainvoke(base_state)
+        logger.info(f"[RAG Service] Pipeline complete")
         return result.get("normalized", {})
 
     # --- LangChain node functions ---
@@ -77,25 +84,35 @@ class AgenticChatService:
         user_id = state["user_id"]
         question = state["question"]
 
+        logger.info(
+            f"[RAG Retrieval] Starting context retrieval for question: {question[:100]}..."
+        )
+
         # Structured context (active meds/conditions/events) for precise answers like start dates
         patient_context = embeddings_service.get_patient_context(
             db=db, user_id=user_id, current_document_date=None, limit=20
+        )
+        logger.info(
+            f"[RAG Retrieval] Patient context: {len(patient_context.get('active_medications', []))} active meds, {len(patient_context.get('conditions', []))} conditions"
         )
 
         # Documents
         doc_hits = embeddings_service.search_similar_documents(
             db=db, user_id=user_id, query=question, limit=12
         )
+        logger.info(f"[RAG Retrieval] Found {len(doc_hits)} similar documents")
 
         # Timeline events (often contain start dates)
         event_hits = embeddings_service.search_similar_timeline_events(
             db=db, user_id=user_id, query=question, limit=8
         )
+        logger.info(f"[RAG Retrieval] Found {len(event_hits)} timeline events")
 
         # Clinical entities (meds/conditions/labs) for direct lookups
         entity_hits = embeddings_service.search_similar_clinical_entities(
             db=db, user_id=user_id, query=question, limit=8
         )
+        logger.info(f"[RAG Retrieval] Found {len(entity_hits)} clinical entities")
 
         unified: List[Dict[str, Any]] = []
         primary_document_id: Optional[str] = None
@@ -180,6 +197,16 @@ class AgenticChatService:
         filtered = [u for u in unified if u.get("similarity_score", 0) >= 0.1]
         top_items = filtered[:12] if filtered else unified[:8]
 
+        logger.info(f"[RAG Retrieval] Total unified results: {len(unified)}")
+        logger.info(f"[RAG Retrieval] After filtering: {len(filtered)} items")
+        logger.info(f"[RAG Retrieval] Final top items: {len(top_items)} items")
+
+        # Log top results for debugging
+        for idx, item in enumerate(top_items[:3], 1):
+            logger.info(
+                f"[RAG Retrieval] Top {idx}: type={item.get('type')}, score={item.get('similarity_score'):.3f}, content_preview={item.get('content', '')[:80]}..."
+            )
+
         return {"results": top_items, "primary_document_id": primary_document_id}
 
     def _build_prompt(self, state: Dict[str, Any]) -> str:
@@ -206,49 +233,93 @@ class AgenticChatService:
         context_block = "\n".join(context_lines).strip() or "None"
 
         prompt = f"""
-You are a careful medical information assistant. Answer ONLY with information supported by the provided records. Do not invent details or provide new diagnoses.
+You are an expert medical information assistant that helps patients understand their medical records. Your role is to:
+- Answer questions ONLY using information from the provided medical records
+- Cite all information with [Source #] references
+- Be precise with medical facts (dates, dosages, values, conditions)
+- Never invent or assume information not in the records
+- If information is missing, clearly state what is unavailable
 
-=== CONVERSATION SNAPSHOT ===
+=== RECENT CONVERSATION ===
 {history_block}
 
-=== PATIENT'S MEDICAL RECORDS ===
+=== AVAILABLE MEDICAL RECORDS ===
 {context_block}
 
 === PATIENT'S QUESTION ===
 {question}
 
+=== INSTRUCTIONS ===
+1. Review all sources carefully and identify relevant information
+2. Answer the question using ONLY the facts from the sources above
+3. Include specific details: dates, dosages, values, test results, diagnoses
+4. Cite every fact with [Source #] references
+5. If the question cannot be fully answered from these records, explain what information is missing
+6. Keep your answer concise (2-5 sentences) but include all critical medical details
+7. Format your response as valid JSON
+
 === RESPONSE FORMAT (JSON) ===
 {{
-  "answer": string,
-  "key_details": [string],
-  "citations": [string],
-  "note": string
+  "answer": "<Your answer here with [Source #] citations>",
+  "key_details": [
+    "<Key fact 1 with [Source #]>",
+    "<Key fact 2 with [Source #]>"
+  ],
+  "citations": ["Source 1", "Source 2"],
+  "note": "<Any clarifications or limitations>"
 }}
-- Use [Source #] references in answer and key_details.
-- If information is missing, set answer to "" and explain in note.
-- Keep answer to 2-4 sentences.
+
+**Your response (JSON only):**
 """
         return prompt.strip()
 
     async def _call_model(self, state: Dict[str, Any]) -> Dict[str, Any]:
         prompt = state.get("prompt", "")
+        question = state.get("question", "")
         max_retries = 2
-        
+
+        logger.info(f"[RAG Model Call] Question: {question[:150]}...")
+        logger.info(f"[RAG Model Call] Prompt length: {len(prompt)} chars")
+
         for attempt in range(max_retries + 1):
+            logger.info(f"[RAG Model Call] Attempt {attempt + 1}/{max_retries + 1}")
             response = await self.medgemma.generate_text_response(prompt)
-            
+
+            # Log detailed response for debugging
+            logger.info(f"[RAG Model Response] Success: {response.get('success')}")
+            if response.get("text"):
+                logger.info(
+                    f"[RAG Model Response] Text length: {len(response.get('text', ''))} chars"
+                )
+                logger.info(
+                    f"[RAG Model Response] Text preview: {response.get('text', '')[:300]}..."
+                )
+            if response.get("structured"):
+                logger.info(
+                    f"[RAG Model Response] Structured: {response.get('structured')}"
+                )
+            if not response.get("success"):
+                logger.warning(f"[RAG Model Response] Error: {response.get('error')}")
+
             # Check if response is successful and has content
-            if response.get("success") and (response.get("text") or response.get("structured")):
-                if attempt > 0:
-                    print(f"✓ LLM succeeded on retry attempt {attempt + 1}")
+            if response.get("success") and (
+                response.get("text") or response.get("structured")
+            ):
+                logger.info(f"✅ [RAG Model Call] Success on attempt {attempt + 1}")
                 return response
-            
+
             # Log failure and retry if not last attempt
             if attempt < max_retries:
-                print(f"⚠️ LLM attempt {attempt + 1} failed (no JSON), retrying...")
+                logger.warning(
+                    f"⚠️ [RAG Model Call] Attempt {attempt + 1} failed, retrying..."
+                )
+                await asyncio.sleep(1)  # Brief delay before retry
             else:
-                print(f"❌ LLM failed after {max_retries + 1} attempts")
-        
+                logger.error(
+                    f"❌ [RAG Model Call] All {max_retries + 1} attempts failed"
+                )
+                logger.error(f"[RAG Model Call] Final response: {response}")
+
         return response  # Return last attempt even if failed
 
     def _normalize_output(self, state: Dict[str, Any]) -> Dict[str, Any]:
@@ -346,4 +417,7 @@ You are a careful medical information assistant. Answer ONLY with information su
 
 
 def build_agentic_chat_service(medgemma_service: MedGemmaService) -> AgenticChatService:
-    return AgenticChatService(medgemma=medgemma_service)
+    logger.info("[RAG Service] Building agentic chat service")
+    service = AgenticChatService(medgemma=medgemma_service)
+    logger.info("[RAG Service] Agentic chat service ready")
+    return service

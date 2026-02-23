@@ -21,8 +21,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["chat"])
 
 # Initialize services
+logger.info("[CHAT Router] Initializing MedGemma service...")
 medgemma_service = MedGemmaService(settings)
+logger.info("[CHAT Router] Building agentic chat service...")
 agentic_chat_service = build_agentic_chat_service(medgemma_service)
+logger.info("[CHAT Router] Chat services initialized and ready")
 
 
 class ChatMessage(BaseModel):
@@ -86,16 +89,17 @@ async def ask_medical_question(
         Answer with citations and metadata
     """
     try:
+        logger.info("=" * 80)
+        logger.info(f"[RAG CHAT] New question from user: {request.user_id}")
+        logger.info(f"[RAG CHAT] Question: {request.question}")
         logger.info(
-            f"[RAG] Question from user {request.user_id}: {request.question[:100]}..."
+            f"[RAG CHAT] Conversation history: {len(request.conversation_history)} messages"
         )
-
-        logger.info(
-            f"[RAG] Question from user {request.user_id}: {request.question[:100]}..."
-        )
+        logger.info("=" * 80)
 
         history_payload = [msg.model_dump() for msg in request.conversation_history]
 
+        # Run the agentic RAG pipeline
         pipeline_result = await agentic_chat_service.run(
             db=db,
             user_id=request.user_id,
@@ -103,17 +107,33 @@ async def ask_medical_question(
             conversation_history=history_payload,
         )
 
-        if not pipeline_result:
-            logger.warning("[RAG] Agentic pipeline returned empty result")
+        # Log the full result for debugging
+        logger.info("=" * 80)
+        logger.info(f"[RAG CHAT] Pipeline Result:")
+        logger.info(
+            f"[RAG CHAT] Answer length: {len(pipeline_result.get('answer', ''))} chars"
+        )
+        logger.info(f"[RAG CHAT] Answer: {pipeline_result.get('answer', 'NO ANSWER')}")
+        logger.info(
+            f"[RAG CHAT] Citations: {len(pipeline_result.get('citations', []))} sources"
+        )
+        logger.info(
+            f"[RAG CHAT] Context used: {len(pipeline_result.get('context_used', []))} items"
+        )
+        logger.info(f"[RAG CHAT] Confidence: {pipeline_result.get('confidence', 0.0)}")
+        logger.info("=" * 80)
+
+        if not pipeline_result or not pipeline_result.get("answer"):
+            logger.warning("[RAG CHAT] Pipeline returned empty or no answer")
             return ChatResponse(
-                answer="I could not generate an answer from your records. Please try rephrasing or uploading more documents.",
+                answer="I could not generate an answer from your records. Please try rephrasing your question or uploading more medical documents.",
                 citations=[],
                 context_used=[],
                 confidence=0.0,
                 timestamp=datetime.utcnow(),
             )
 
-        return ChatResponse(
+        response = ChatResponse(
             answer=pipeline_result.get("answer", ""),
             citations=pipeline_result.get("citations", []),
             context_used=pipeline_result.get("context_used", [])[:5],
@@ -121,169 +141,13 @@ async def ask_medical_question(
             timestamp=datetime.utcnow(),
         )
 
-        # Search using embeddings service (Agent 5's model)
-        # This returns chunk_text directly from document_embeddings table
-        document_results = embeddings_service.search_similar_documents(
-            db=db, user_id=user_id, query=question, limit=top_k
-        )
-
-        # Build results with the embedded chunk_text
-        all_results = []
-        for doc in document_results:
-            all_results.append(
-                {
-                    "type": "document",
-                    "source_id": doc["document_id"],
-                    "embedding_id": doc["embedding_id"],
-                    "content": doc[
-                        "chunk_text"
-                    ],  # This is the actual embedded content!
-                    "chunk_index": doc["chunk_index"],
-                    "metadata": {
-                        "document_type": doc.get("document_type"),
-                        "document_date": doc.get("document_date"),
-                        "filename": doc.get("filename"),
-                        "original_name": doc.get("original_name"),
-                    },
-                    "similarity_score": doc["similarity_score"],
-                }
-            )
-
-        has_data = len(all_results) > 0
-        avg_similarity = (
-            sum(r["similarity_score"] for r in all_results) / len(all_results)
-            if has_data
-            else 0.0
-        )
-
-        return {
-            "has_data": has_data,
-            "context_snippets": all_results,
-            "statistics": {
-                "total_results": len(all_results),
-                "document_results": len(document_results),
-                "avg_similarity": avg_similarity,
-            },
-        }
+        logger.info(f"[RAG CHAT] ✅ Successfully generated response")
+        return response
 
     except Exception as e:
-        logger.error(f"[RAG Retrieval] Error: {str(e)}", exc_info=True)
-        raise
-
-
-def build_comprehensive_prompt(
-    question: str,
-    context_snippets: List[Dict[str, Any]],
-    conversation_history: Optional[List[ChatMessage]] = None,
-) -> str:
-    """
-    Build an agentic-style prompt for MedGemma with structured context.
-
-    - Defines the assistant role and strict evidence-only constraint
-    - Preserves limited conversation state for continuity
-    - Presents context with numbered sources and metadata
-    - Requests short, cited answers with an explicit template
-    - Encourages reasoning while keeping the final reply concise
-    """
-
-    def format_history(history: List[ChatMessage]) -> str:
-        """Serialize the last few turns to keep continuity without overflowing tokens."""
-        if not history:
-            return "None"
-        trimmed = []
-        for msg in history[-3:]:
-            role = "User" if msg.role == "user" else "Assistant"
-            trimmed.append(f"{role}: {msg.content[:400].strip()}")
-        return "\n".join(trimmed)
-
-    def format_context(snippets: List[Dict[str, Any]]) -> str:
-        """Render a compact, source-numbered context block."""
-        lines = []
-        for idx, snippet in enumerate(snippets[:5], 1):
-            metadata = snippet.get("metadata", {})
-            doc_date = metadata.get("document_date")
-            date_str = f" ({doc_date})" if doc_date else ""
-            header = f"[Source {idx}]{date_str}"
-            content = snippet.get("content", "").strip()
-            lines.append(f"{header}\n{content}\n")
-        return "\n".join(lines).strip()
-
-    history_block = format_history(conversation_history or [])
-    context_block = format_context(context_snippets)
-
-    # Structured prompt with explicit markers helps both the model and the mock path
-    prompt = f"""
-You are a careful medical information assistant. Answer ONLY with information supported by the provided records. Do not invent details, and do not offer diagnosis or treatment beyond what is stated.
-
-=== CONVERSATION SNAPSHOT ===
-{history_block}
-
-=== PATIENT'S MEDICAL RECORDS ===
-{context_block}
-
-=== PATIENT'S QUESTION ===
-{question}
-
-=== INSTRUCTIONS ===
-- Think briefly about the key facts from the sources. Do not include your reasoning in the final answer.
-- If the records are insufficient to answer, say so clearly and suggest what information is missing.
-- Keep the answer concise (2-4 sentences) and cite sources using [Source #].
-- Include critical details (dates, dosages, values) when available.
-
-=== RESPONSE FORMAT ===
-Answer: <2-3 sentence answer with [Source #] citations>
-Key details: <bullet-style facts with citations>
-Note: This information is for educational purposes and not a substitute for professional medical advice.
-
-Your response:
-"""
-
-    return prompt.strip()
-
-
-def build_citations(context_snippets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    Build comprehensive citation list from retrieved documents.
-    Includes all necessary metadata for frontend display and verification.
-
-    Args:
-        context_snippets: Retrieved document context with embeddings
-
-    Returns:
-        List of document citations with complete metadata
-    """
-    citations = []
-    seen_sources = set()  # Track by document_id to avoid duplicates
-
-    for idx, snippet in enumerate(context_snippets[:8], 1):  # Top 8 sources
-        source_id = snippet["source_id"]
-
-        # Avoid duplicate documents (same document may have multiple chunks)
-        if source_id in seen_sources:
-            continue
-        seen_sources.add(source_id)
-
-        citation = {
-            "citation_number": idx,
-            "source_id": source_id,
-            "embedding_id": snippet.get("embedding_id"),
-            "type": snippet["type"],
-            "similarity_score": snippet["similarity_score"],
-            "chunk_index": snippet.get("chunk_index", 0),
-            # Document metadata for display
-            "metadata": {
-                "filename": snippet["metadata"].get("filename", "Unknown"),
-                "original_name": snippet["metadata"].get("original_name"),
-                "document_type": snippet["metadata"].get("document_type", "document"),
-                "document_date": snippet["metadata"].get("document_date"),
-            },
-            # User-friendly display fields
-            "title": snippet["metadata"].get("filename", "Unknown Document"),
-            "document_type": snippet["metadata"].get("document_type", "document"),
-            "date": snippet["metadata"].get("document_date"),
-            "relevance": f"{snippet['similarity_score']:.0%}",
-        }
-
-        citations.append(citation)
-
-    return citations
+        logger.error(
+            f"[RAG CHAT] ❌ Error processing question: {str(e)}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to process question: {str(e)}"
+        )

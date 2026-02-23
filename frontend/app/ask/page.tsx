@@ -80,12 +80,9 @@ export default function AskAIPage() {
       const docDetails = await detailsRes.json()
       const filePath = docDetails.document.file_path
 
-      // Get signed URL for the file
-      const urlRes = await fetch(`http://localhost:8000/api/v1/files/view/${encodeURIComponent(filePath)}`)
-      if (!urlRes.ok) throw new Error('Failed to fetch file URL')
-      
-      const urlData = await urlRes.json()
-      setPreviewDoc({ id: docId, name: docName, url: urlData.url })
+      // Use the file view URL directly (backend returns 302 redirect to signed URL)
+      const viewUrl = `http://localhost:8000/api/v1/files/view/${encodeURIComponent(filePath)}`
+      setPreviewDoc({ id: docId, name: docName, url: viewUrl })
     } catch (error) {
       console.error('Error loading document preview:', error)
       setPreviewDoc(prev => prev ? { ...prev, url: 'error' } : null)
@@ -202,52 +199,141 @@ export default function AskAIPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-cyan-50">
-      <div className="max-w-5xl mx-auto px-4 py-8">
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #fffbf7 0%, #fef3ec 40%, #fff6f0 70%, #fffbf7 100%)',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* Background Decorations */}
+      <div style={{
+        position: 'absolute',
+        top: '15%',
+        right: '5%',
+        width: '450px',
+        height: '450px',
+        background: 'radial-gradient(circle, rgba(167,139,250,0.14) 0%, transparent 70%)',
+        borderRadius: '50%',
+        filter: 'blur(70px)',
+        pointerEvents: 'none',
+      }}></div>
+      <div style={{
+        position: 'absolute',
+        bottom: '15%',
+        left: '5%',
+        width: '400px',
+        height: '400px',
+        background: 'radial-gradient(circle, rgba(249,115,22,0.1) 0%, transparent 70%)',
+        borderRadius: '50%',
+        filter: 'blur(60px)',
+        pointerEvents: 'none',
+      }}></div>
+
+      <div style={{
+        maxWidth: '1100px',
+        margin: '0 auto',
+        padding: '40px 24px',
+        position: 'relative',
+        zIndex: 1,
+      }}>
         {/* Header */}
-        <div className="mb-8 text-center">
-          <div className="flex items-center justify-center mb-4">
-            <SparklesIcon className="h-10 w-10 text-blue-600 mr-3" />
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
-              Ask AI
+        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px' }}>
+            <SparklesIcon style={{ width: '36px', height: '36px', color: '#8b5cf6', marginRight: '12px' }} />
+            <h1 style={{
+              fontSize: '42px',
+              fontWeight: '900',
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              letterSpacing: '-0.02em',
+              margin: 0,
+            }}>
+              MediBot
             </h1>
           </div>
-          <p className="text-gray-600 max-w-2xl mx-auto">
-            Ask questions about your medical history. I'll search through your records and provide accurate answers with citations.
+          <p style={{
+            fontSize: '16px',
+            color: '#78716c',
+            maxWidth: '650px',
+            margin: '0 auto 20px',
+            lineHeight: '1.6',
+          }}>
+            Your intelligent medical assistant. Ask questions about your health records, and I'll provide accurate answers with source citations.
           </p>
           
           {/* Medical Disclaimer Banner */}
-          <div className="mt-6 bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-lg max-w-3xl mx-auto">
-            <div className="flex items-start">
-              <ExclamationTriangleIcon className="h-5 w-5 text-amber-400 mt-0.5 mr-3 flex-shrink-0" />
-              <div className="text-left">
-                <p className="text-sm text-amber-800 font-medium">Medical Information Disclaimer</p>
-                <p className="text-xs text-amber-700 mt-1">
-                  This AI assistant provides information based on your medical records only. 
-                  It does not provide diagnoses or medical advice. Always consult your healthcare provider for medical decisions.
-                </p>
-              </div>
+          <div style={{
+            background: 'rgba(251, 191, 36, 0.1)',
+            border: '1px solid rgba(251, 191, 36, 0.3)',
+            borderRadius: '12px',
+            padding: '14px 18px',
+            maxWidth: '700px',
+            margin: '0 auto',
+            display: 'flex',
+            alignItems: 'flex-start',
+            textAlign: 'left',
+          }}>
+            <ExclamationTriangleIcon style={{ width: '20px', height: '20px', color: '#fbbf24', marginRight: '12px', flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              <p style={{ fontSize: '13px', color: '#fbbf24', fontWeight: '600', margin: 0 }}>Medical Information Disclaimer</p>
+              <p style={{ fontSize: '12px', color: 'rgba(251, 191, 36, 0.9)', margin: '4px 0 0' }}>
+                This AI provides information based on your records only. It does not provide diagnoses or medical advice. Always consult your healthcare provider.
+              </p>
             </div>
           </div>
         </div>
 
         {/* Chat Container */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+        <div style={{
+          background: '#ffffff',
+          borderRadius: '24px',
+          border: '1.5px solid rgba(0,0,0,0.06)',
+          overflow: 'hidden',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+        }}>
           {/* Messages Area */}
-          <div className="h-[600px] overflow-y-auto p-6 space-y-6">
+          <div style={{
+            height: '600px',
+            overflowY: 'auto',
+            padding: '32px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '24px',
+          }}>
             {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <SparklesIcon className="h-16 w-16 text-gray-300 mb-4" />
-                <h3 className="text-xl font-semibold text-gray-700 mb-2">
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                textAlign: 'center',
+              }}>
+                <SparklesIcon style={{ width: '64px', height: '64px', color: 'rgba(167,139,250,0.4)', marginBottom: '20px' }} />
+                <h3 style={{
+                  fontSize: '24px',
+                  fontWeight: '700',
+                  color: '#1c1917',
+                  marginBottom: '12px',
+                }}>
                   Start a Conversation
                 </h3>
-                <p className="text-gray-500 max-w-md mb-6">
+                <p style={{
+                  fontSize: '15px',
+                  color: '#78716c',
+                  maxWidth: '500px',
+                  marginBottom: '32px',
+                }}>
                   Ask me anything about your medical history, medications, conditions, or test results.
                 </p>
                 
                 {/* Example Questions */}
-                <div className="space-y-2 max-w-lg w-full">
-                  <p className="text-sm text-gray-600 font-medium mb-3">Example questions:</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '550px', width: '100%' }}>
+                  <p style={{ fontSize: '13px', color: '#a8a29e', fontWeight: '600', marginBottom: '8px' }}>
+                    Example questions:
+                  </p>
                   {[
                     'What medications am I currently taking?',
                     'Show me my recent lab results',
@@ -257,7 +343,28 @@ export default function AskAIPage() {
                     <button
                       key={idx}
                       onClick={() => setInputValue(example)}
-                      className="w-full text-left px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm transition-colors"
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '14px 18px',
+                        background: '#fdfbf8',
+                        border: '1.5px solid rgba(167,139,250,0.25)',
+                        borderRadius: '12px',
+                        color: '#1c1917',
+                        fontSize: '14px',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(167,139,250,0.1)'
+                        e.currentTarget.style.borderColor = 'rgba(167,139,250,0.5)'
+                        e.currentTarget.style.transform = 'translateX(4px)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#fdfbf8'
+                        e.currentTarget.style.borderColor = 'rgba(167,139,250,0.25)'
+                        e.currentTarget.style.transform = 'translateX(0)'
+                      }}
                     >
                       {example}
                     </button>
@@ -269,24 +376,53 @@ export default function AskAIPage() {
                 {messages.map((message, idx) => (
                   <div
                     key={idx}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    style={{
+                      display: 'flex',
+                      justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start',
+                    }}
                   >
                     <div
-                      className={`max-w-[80%] ${
-                        message.role === 'user'
-                          ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white'
-                          : 'bg-gray-100 text-gray-900'
-                      } rounded-2xl px-5 py-4 shadow-sm`}
+                      style={{
+                        maxWidth: '75%',
+                        background: message.role === 'user'
+                          ? 'linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%)'
+                          : '#f9f5ff',
+                        backdropFilter: 'none',
+                        border: message.role === 'assistant' ? '1.5px solid rgba(167,139,250,0.15)' : 'none',
+                        borderRadius: '18px',
+                        padding: '18px 22px',
+                        boxShadow: message.role === 'user' 
+                          ? '0 4px 16px rgba(139, 92, 246, 0.3)'
+                          : '0 2px 12px rgba(167,139,250,0.08)',
+                      }}
                     >
                       {/* Message Content */}
-                      <div className="whitespace-pre-wrap break-words">
+                      <div style={{
+                        color: message.role === 'user' ? '#fff' : '#1c1917',
+                        fontSize: '15px',
+                        lineHeight: '1.6',
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                      }}>
                         {message.content}
                       </div>
 
                       {/* Citations */}
                       {message.citations && message.citations.length > 0 && (
-                        <div className="mt-4 pt-4 border-t border-gray-300 space-y-2">
-                          <p className="text-xs font-semibold text-gray-700 mb-2">
+                        <div style={{
+                          marginTop: '18px',
+                          paddingTop: '18px',
+                          borderTop: '1px solid rgba(167,139,250,0.2)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px',
+                        }}>
+                          <p style={{
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            color: '#78716c',
+                            margin: 0,
+                          }}>
                             📚 Sources Referenced:
                           </p>
                           {message.citations.map((citation, citIdx) => {
@@ -302,29 +438,64 @@ export default function AskAIPage() {
                                     e.stopPropagation()
                                     openDocumentPreview(docId, docName)
                                   }}
-                                  className="w-full bg-white rounded-lg p-3 text-xs border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all text-left group"
+                                  style={{
+                                    background: '#ffffff',
+                                    border: '1.5px solid rgba(167,139,250,0.2)',
+                                    borderRadius: '10px',
+                                    padding: '12px',
+                                    fontSize: '12px',
+                                    textAlign: 'left',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.3s ease',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = 'rgba(167,139,250,0.08)'
+                                    e.currentTarget.style.borderColor = 'rgba(167,139,250,0.5)'
+                                    e.currentTarget.style.transform = 'translateY(-2px)'
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = '#ffffff'
+                                    e.currentTarget.style.borderColor = 'rgba(167,139,250,0.2)'
+                                    e.currentTarget.style.transform = 'translateY(0)'
+                                  }}
                                 >
-                                  <div className="flex items-start">
-                                    <div className="text-blue-600 mr-2 mt-0.5 group-hover:scale-110 transition-transform">
-                                      <DocumentTextIcon className="h-4 w-4" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="font-semibold text-gray-900 group-hover:text-blue-700 truncate">
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                                    <DocumentTextIcon style={{ width: '16px', height: '16px', color: '#8b5cf6', flexShrink: 0, marginTop: '2px' }} />
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <p style={{
+                                        fontWeight: '600',
+                                        color: '#1c1917',
+                                        margin: '0 0 4px',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                      }}>
                                         {docName}
                                       </p>
-                                      <div className="flex items-center gap-2 mt-1 text-gray-600 flex-wrap">
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                         {citation.metadata?.document_date && (
-                                          <span className="text-xs">
+                                          <span style={{ fontSize: '11px', color: '#78716c' }}>
                                             📅 {formatCitationDate(citation.metadata.document_date)}
                                           </span>
                                         )}
                                         {citation.metadata?.document_type && (
-                                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded capitalize">
+                                          <span style={{
+                                            fontSize: '10px',
+                                            background: 'rgba(139, 92, 246, 0.3)',
+                                            color: '#c4b5fd',
+                                            padding: '3px 8px',
+                                            borderRadius: '6px',
+                                            textTransform: 'capitalize',
+                                          }}>
                                             {citation.metadata.document_type.replace(/_/g, ' ')}
                                           </span>
                                         )}
                                       </div>
-                                      <div className="mt-1 text-xs text-gray-500 group-hover:text-blue-600">
+                                      <div style={{
+                                        marginTop: '6px',
+                                        fontSize: '11px',
+                                        color: '#8b5cf6',
+                                      }}>
                                         Click to preview document →
                                       </div>
                                     </div>
@@ -332,18 +503,18 @@ export default function AskAIPage() {
                                 </button>
                               )
                             }
-                            // Skip non-document citations (they're internal/structured data)
+                            // Skip non-document citations
                             return null
                           })}
                         </div>
                       )}
 
                       {/* Timestamp */}
-                      <div
-                        className={`text-xs mt-2 ${
-                          message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
-                        }`}
-                      >
+                      <div style={{
+                        fontSize: '11px',
+                        color: 'rgba(100,92,88,0.6)',
+                        marginTop: '10px',
+                      }}>
                         {formatTime(message.timestamp)}
                       </div>
                     </div>
@@ -352,15 +523,44 @@ export default function AskAIPage() {
 
                 {/* Loading Indicator */}
                 {isLoading && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-100 rounded-2xl px-5 py-4 shadow-sm">
-                      <div className="flex items-center space-x-2">
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                          <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                    <div style={{
+                      background: '#f9f5ff',
+                      border: '1.5px solid rgba(167,139,250,0.15)',
+                      borderRadius: '18px',
+                      padding: '18px 22px',
+                      boxShadow: '0 2px 12px rgba(167,139,250,0.08)',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <div style={{
+                            width: '8px',
+                            height: '8px',
+                            background: '#8b5cf6',
+                            borderRadius: '50%',
+                            animation: 'bounce 1.4s infinite ease-in-out both',
+                            animationDelay: '0s',
+                          }}></div>
+                          <div style={{
+                            width: '8px',
+                            height: '8px',
+                            background: '#8b5cf6',
+                            borderRadius: '50%',
+                            animation: 'bounce 1.4s infinite ease-in-out both',
+                            animationDelay: '0.2s',
+                          }}></div>
+                          <div style={{
+                            width: '8px',
+                            height: '8px',
+                            background: '#8b5cf6',
+                            borderRadius: '50%',
+                            animation: 'bounce 1.4s infinite ease-in-out both',
+                            animationDelay: '0.4s',
+                          }}></div>
                         </div>
-                        <span className="text-sm text-gray-600">Searching your records...</span>
+                        <span style={{ fontSize: '14px', color: '#78716c' }}>
+                          MediBot is analyzing your records...
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -371,34 +571,96 @@ export default function AskAIPage() {
           </div>
 
           {/* Input Area */}
-          <div className="border-t border-gray-200 bg-gray-50 p-4">
-            <form onSubmit={handleSubmit} className="flex items-end gap-3">
-              <div className="flex-1">
+          <div style={{
+            borderTop: '1px solid rgba(0,0,0,0.06)',
+            background: 'rgba(249,115,22,0.02)',
+            padding: '20px 24px',
+          }}>
+            <form onSubmit={handleSubmit} style={{ display: 'flex', alignItems: 'flex-end', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
                 <textarea
                   ref={inputRef}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Ask a question about your medical history..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  rows={2}
                   disabled={isLoading}
+                  style={{
+                    width: '100%',
+                    padding: '14px 18px',
+                    background: '#fdfaf8',
+                    border: '1.5px solid rgba(0,0,0,0.1)',
+                    borderRadius: '12px',
+                    color: '#1c1917',
+                    fontSize: '15px',
+                    resize: 'none',
+                    outline: 'none',
+                    transition: 'all 0.3s ease',
+                    fontFamily: 'inherit',
+                  }}
+                  rows={2}
+                  onFocus={(e) => {
+                    e.currentTarget.style.background = '#ffffff'
+                    e.currentTarget.style.borderColor = 'rgba(167,139,250,0.5)'
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.background = '#fdfaf8'
+                    e.currentTarget.style.borderColor = 'rgba(0,0,0,0.1)'
+                  }}
                 />
-                <p className="text-xs text-gray-500 mt-1 px-1">
+                <p style={{
+                  fontSize: '11px',
+                  color: '#a8a29e',
+                  marginTop: '8px',
+                  marginLeft: '4px',
+                }}>
                   Press Enter to send, Shift+Enter for new line
                 </p>
               </div>
               <button
                 type="submit"
                 disabled={!inputValue.trim() || isLoading}
-                className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white p-4 rounded-xl hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
+                style={{
+                  background: inputValue.trim() && !isLoading
+                    ? 'linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%)'
+                    : 'rgba(0,0,0,0.08)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  cursor: inputValue.trim() && !isLoading ? 'pointer' : 'not-allowed',
+                  transition: 'all 0.3s ease',
+                  boxShadow: inputValue.trim() && !isLoading
+                    ? '0 8px 24px rgba(139, 92, 246, 0.4)'
+                    : 'none',
+                  opacity: inputValue.trim() && !isLoading ? 1 : 0.4,
+                }}
+                onMouseEnter={(e) => {
+                  if (inputValue.trim() && !isLoading) {
+                    e.currentTarget.style.transform = 'translateY(-2px)'
+                    e.currentTarget.style.boxShadow = '0 12px 32px rgba(139, 92, 246, 0.5)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (inputValue.trim() && !isLoading) {
+                    e.currentTarget.style.transform = 'translateY(0)'
+                    e.currentTarget.style.boxShadow = '0 8px 24px rgba(139, 92, 246, 0.4)'
+                  }
+                }}
               >
-                <PaperAirplaneIcon className="h-5 w-5" />
+                <PaperAirplaneIcon style={{ width: '20px', height: '20px', color: '#fff' }} />
               </button>
             </form>
 
             {error && (
-              <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">
+              <div style={{
+                marginTop: '12px',
+                padding: '12px 16px',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '10px',
+                color: '#ef4444',
+                fontSize: '13px',
+              }}>
                 {error}
               </div>
             )}
@@ -406,11 +668,11 @@ export default function AskAIPage() {
         </div>
 
         {/* Footer Safety Notice */}
-        <div className="mt-6 text-center">
-          <p className="text-xs text-gray-500">
+        <div style={{ marginTop: '24px', textAlign: 'center' }}>
+          <p style={{ fontSize: '12px', color: '#a8a29e', marginBottom: '8px' }}>
             🔒 Your medical information is private and secure. This AI assistant only accesses your uploaded medical records.
           </p>
-          <p className="text-xs text-gray-500 mt-1">
+          <p style={{ fontSize: '12px', color: '#a8a29e' }}>
             ⚠️ Always verify important medical information with your healthcare provider.
           </p>
         </div>
@@ -419,77 +681,200 @@ export default function AskAIPage() {
       {/* Document Preview Modal */}
       {showPreview && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
           onClick={closePreview}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+            padding: '32px',
+          }}
         >
           <div 
-            className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'linear-gradient(135deg, #1a2942 0%, #0d1f3c 100%)',
+              borderRadius: '20px',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+              maxWidth: '1000px',
+              width: '100%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <div className="flex items-center gap-3">
-                <DocumentTextIcon className="h-6 w-6 text-blue-600" />
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '24px 32px',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <DocumentTextIcon style={{ width: '24px', height: '24px', color: '#8b5cf6' }} />
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
+                  <h3 style={{
+                    fontSize: '18px',
+                    fontWeight: '700',
+                    color: '#fff',
+                    margin: 0,
+                  }}>
                     {previewDoc?.name || 'Document Preview'}
                   </h3>
-                  <p className="text-sm text-gray-500">Medical Document</p>
+                  <p style={{
+                    fontSize: '13px',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    margin: '4px 0 0',
+                  }}>
+                    Medical Document
+                  </p>
                 </div>
               </div>
               <button
                 onClick={closePreview}
-                className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-2 rounded-lg transition-colors"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: 'none',
+                  borderRadius: '10px',
+                  padding: '10px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+                }}
               >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg style={{ width: '24px', height: '24px', color: 'rgba(255, 255, 255, 0.8)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="flex-1 overflow-auto p-6 bg-gray-50">
+            <div style={{
+              flex: 1,
+              overflow: 'auto',
+              padding: '32px',
+              background: 'rgba(0, 0, 0, 0.2)',
+            }}>
               {loadingPreview ? (
-                <div className="flex items-center justify-center h-96">
-                  <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mb-4"></div>
-                    <p className="text-gray-600">Loading document...</p>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: '400px',
+                }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{
+                      width: '48px',
+                      height: '48px',
+                      border: '4px solid rgba(139, 92, 246, 0.2)',
+                      borderTopColor: '#8b5cf6',
+                      borderRadius: '50%',
+                      animation: 'spin 0.8s linear infinite',
+                      margin: '0 auto 16px',
+                    }}></div>
+                    <p style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '15px' }}>Loading document...</p>
                   </div>
                 </div>
               ) : previewDoc?.url === 'error' ? (
-                <div className="flex items-center justify-center h-96">
-                  <div className="text-center">
-                    <ExclamationTriangleIcon className="h-12 w-12 text-red-500 mx-auto mb-4" />
-                    <p className="text-gray-900 font-semibold mb-2">Failed to load document</p>
-                    <p className="text-gray-600 text-sm">Please try again later</p>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: '400px',
+                }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <ExclamationTriangleIcon style={{ width: '48px', height: '48px', color: '#ef4444', margin: '0 auto 16px' }} />
+                    <p style={{ fontSize: '16px', fontWeight: '600', color: '#fff', marginBottom: '8px' }}>Failed to load document</p>
+                    <p style={{ fontSize: '14px', color: 'rgba(255, 255, 255, 0.6)' }}>Please try again later</p>
                   </div>
                 </div>
               ) : previewDoc?.url ? (
-                <div className="flex justify-center">
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
                   <img
                     src={previewDoc.url}
                     alt={previewDoc.name}
-                    className="max-w-full h-auto rounded-lg shadow-lg"
-                    style={{ maxHeight: 'calc(90vh - 200px)' }}
+                    style={{
+                      maxWidth: '100%',
+                      height: 'auto',
+                      borderRadius: '12px',
+                      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
+                      maxHeight: 'calc(90vh - 200px)',
+                    }}
                   />
                 </div>
               ) : null}
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-between p-6 border-t border-gray-200 bg-white">
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '20px 32px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+              background: 'rgba(255, 255, 255, 0.02)',
+            }}>
               <button
                 onClick={closePreview}
-                className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                style={{
+                  padding: '12px 24px',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: '#fff',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'
+                }}
               >
                 Close
               </button>
               <button
                 onClick={() => router.push(`/documents/${previewDoc?.id}`)}
-                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg font-medium transition-all shadow-lg hover:shadow-xl flex items-center gap-2"
+                style={{
+                  padding: '12px 24px',
+                  background: 'linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%)',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: '#fff',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  boxShadow: '0 8px 24px rgba(139, 92, 246, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)'
+                  e.currentTarget.style.boxShadow = '0 12px 32px rgba(139, 92, 246, 0.5)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(139, 92, 246, 0.4)'
+                }}
               >
                 <span>View Full Details</span>
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </button>
@@ -497,6 +882,22 @@ export default function AskAIPage() {
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        @keyframes bounce {
+          0%, 100% {
+            transform: translateY(0);
+            animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+          }
+          50% {
+            transform: translateY(-25%);
+            animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+          }
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   )
 }

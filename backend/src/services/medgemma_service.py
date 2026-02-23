@@ -1,42 +1,74 @@
 """
-MedGemma service for medical document analysis using Google Vertex AI.
+MedGemma service for medical document analysis.
+
+Supports two backends (selected automatically via environment variables):
+  - Colab / generic HTTP  : set MEDGEMMA_ENDPOINT_URL=https://<ngrok-or-other-url>
+  - Vertex AI (default)   : set GOOGLE_CLOUD_PROJECT + MEDGEMMA_ENDPOINT_ID
 """
 
 import base64
 import logging
 from typing import Dict, Any, List, Optional
-from google.cloud import aiplatform
 from src.core.config import Settings
+
+try:
+    from google.cloud import aiplatform as _aiplatform
+except ImportError:
+    _aiplatform = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
 
 class MedGemmaService:
-    """Service for interacting with MedGemma model on Vertex AI."""
+    """Service for interacting with MedGemma (Vertex AI or Colab HTTP)."""
 
     def __init__(self, settings: Settings):
         """
         Initialize MedGemma service.
 
+        If ``MEDGEMMA_ENDPOINT_URL`` is set the service forwards requests to
+        that HTTP endpoint (e.g. a Google Colab + ngrok deployment) instead of
+        Vertex AI.  All other behaviour and return shapes are identical.
+
         Args:
             settings: Application settings
         """
         self.settings = settings
+        self._initialized = False
+        self.endpoint = None  # Vertex AI Endpoint object (None in HTTP mode)
+
+        # ── HTTP / Colab mode ─────────────────────────────────────────────
+        http_url: Optional[str] = getattr(settings, "medgemma_endpoint_url", None)
+        if http_url:
+            self._mode = "http"
+            self._http_url = http_url.rstrip("/")
+            self._initialized = True
+            logger.info("[OK] MedGemma service → HTTP / Colab mode")
+            logger.info(f"  Endpoint URL : {self._http_url}")
+            return
+
+        # ── Vertex AI mode (default) ──────────────────────────────────────
+        self._mode = "vertex"
         self.project = settings.google_cloud_project
         self.location = settings.vertex_ai_location
         self.endpoint_id = settings.medgemma_endpoint_id
-        self.endpoint = None
-        self._initialized = False
 
-        # Vertex AI is initialised once at startup (main.py → init_vertex_ai()).
-        # Just create the endpoint reference here.
+        if _aiplatform is None:
+            logger.warning(
+                "[WARN] google-cloud-aiplatform not installed; MedGemma will use mock responses."
+            )
+            return
+
         try:
-            endpoint_resource_name = f"projects/{self.project}/locations/{self.location}/endpoints/{self.endpoint_id}"
-            self.endpoint = aiplatform.Endpoint(endpoint_name=endpoint_resource_name)
+            endpoint_resource_name = (
+                f"projects/{self.project}/locations/{self.location}"
+                f"/endpoints/{self.endpoint_id}"
+            )
+            self.endpoint = _aiplatform.Endpoint(endpoint_name=endpoint_resource_name)
             self._initialized = True
-            logger.info(f"[OK] MedGemma service initialized successfully")
-            logger.info(f"  Project: {self.project}")
-            logger.info(f"  Location: {self.location}")
+            logger.info("[OK] MedGemma service initialized (Vertex AI)")
+            logger.info(f"  Project    : {self.project}")
+            logger.info(f"  Location   : {self.location}")
             logger.info(f"  Endpoint ID: {self.endpoint_id[:20]}...")
         except Exception as e:
             logger.error(
@@ -64,7 +96,8 @@ class MedGemmaService:
         """
         Send image to MedGemma for inference.
 
-        If Google Cloud is not configured, returns mock data for development.
+        Routes to HTTP (Colab) or Vertex AI depending on configuration.
+        Returns mock data when neither is available.
 
         Args:
             image_path: Path to the image file
@@ -73,31 +106,68 @@ class MedGemmaService:
         Returns:
             Dictionary containing model predictions
         """
-        # Return mock data if not initialized
         if not self._initialized:
             return self._get_mock_response()
 
+        # Encode image + resolve prompt
+        image_b64 = self.encode_image(image_path)
+        if not prompt:
+            prompt = self._get_default_prompt()
+
+        instances = [{"prompt": prompt, "image": {"bytesBase64Encoded": image_b64}}]
+
+        # ── HTTP / Colab path ─────────────────────────────────────────────
+        if self._mode == "http":
+            return await self._call_http_endpoint(instances)
+
+        # ── Vertex AI path ────────────────────────────────────────────────
         try:
-            # Encode image
-            image_b64 = self.encode_image(image_path)
-
-            # Default prompt for medical document extraction
-            if not prompt:
-                prompt = self._get_default_prompt()
-
-            # Prepare instance for prediction
-            instances = [{"prompt": prompt, "image": {"bytesBase64Encoded": image_b64}}]
-
-            # Get prediction
             response = self.endpoint.predict(instances=instances)
-
             return {
                 "success": True,
                 "predictions": response.predictions,
                 "deployed_model_id": response.deployed_model_id,
             }
-
         except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def _call_http_endpoint(self, instances: list) -> Dict[str, Any]:
+        """
+        POST ``instances`` to the Colab / generic HTTP MedGemma endpoint.
+
+        Returns a dict in the same shape as the Vertex AI predict() response so
+        the rest of the service code is unchanged.
+        """
+        import httpx
+
+        payload = {"instances": instances}
+        try:
+            # Increased timeout to 300s for HPC with 8192 max tokens
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                logger.info(
+                    f"[MedGemma HTTP] Sending request with {len(instances)} instance(s)"
+                )
+                resp = await client.post(
+                    f"{self._http_url}/predict",
+                    json=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        # Required to bypass ngrok's browser-warning splash page
+                        "ngrok-skip-browser-warning": "true",
+                    },
+                )
+            resp.raise_for_status()
+            data = resp.json()
+            logger.info(
+                f"[MedGemma HTTP] Success - {len(data.get('predictions', []))} predictions returned"
+            )
+            return {
+                "success": True,
+                "predictions": data.get("predictions", []),
+                "deployed_model_id": data.get("deployed_model_id", "colab"),
+            }
+        except Exception as e:
+            logger.error(f"[ERR] HTTP endpoint call failed: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     async def analyze_document(self, file_path: str) -> Dict[str, Any]:
@@ -248,57 +318,75 @@ Please provide the information in a structured format."""
                 }
             ]
 
-            logger.info("🔍 Calling MedGemma endpoint for chatCompletions...")
-            response = self.endpoint.predict(instances=instances)
-
-            predictions = response.predictions
-            logger.info(f"📥 Response predictions type: {type(predictions)}")
-
-            if isinstance(predictions, dict) and "error" in predictions:
-                error_msg = predictions["error"].get(
-                    "message", str(predictions["error"])
-                )
-                logger.error(f"❌ MedGemma returned error: {error_msg}")
-                return {"success": False, "error": error_msg}
-
-            # Normalize prediction payload
-            if isinstance(predictions, list) and len(predictions) > 0:
-                result = predictions[0]
-                while isinstance(result, list) and len(result) > 0:
-                    result = result[0]
-            else:
-                result = predictions
-
-            # Extract text from common chat completion schemas
-            content_text = None
-            if isinstance(result, dict):
-                if "candidates" in result and result["candidates"]:
-                    candidate = result["candidates"][0]
-                    content_parts = candidate.get("content", {}).get(
-                        "parts"
-                    ) or candidate.get("content", [])
-                    if isinstance(content_parts, list):
-                        text_parts = [
-                            p.get("text")
-                            for p in content_parts
-                            if isinstance(p, dict) and p.get("text")
-                        ]
-                        content_text = (
-                            "\n".join([t for t in text_parts if t])
-                            if text_parts
-                            else None
-                        )
+            # ── HTTP / Colab path ─────────────────────────────────────────
+            if self._mode == "http":
+                http_result = await self._call_http_endpoint(instances)
+                if not http_result.get("success"):
+                    return http_result
+                predictions = http_result.get("predictions", [])
+                content_text = None
+                if predictions:
+                    first = predictions[0]
+                    if isinstance(first, dict):
+                        choices = first.get("choices", [])
+                        if choices:
+                            content_text = choices[0].get("message", {}).get("content")
+                        if not content_text:
+                            content_text = first.get("content") or first.get("text")
                 if not content_text:
-                    content_text = (
-                        result.get("content")
-                        or result.get("text")
-                        or result.get("message", {}).get("content")
-                        or result.get("choices", [{}])[0]
-                        .get("message", {})
-                        .get("content")
+                    return {"success": False, "error": "No content in HTTP response"}
+                # Skip into the JSON-parsing block below
+            else:
+                # ── Vertex AI path ─────────────────────────────────────────
+                logger.info("🔍 Calling MedGemma endpoint for chatCompletions...")
+                response = self.endpoint.predict(instances=instances)
+
+                predictions = response.predictions
+                logger.info(f"📥 Response predictions type: {type(predictions)}")
+
+                if isinstance(predictions, dict) and "error" in predictions:
+                    error_msg = predictions["error"].get(
+                        "message", str(predictions["error"])
                     )
-            elif isinstance(result, str):
-                content_text = result
+                    logger.error(f"❌ MedGemma returned error: {error_msg}")
+                    return {"success": False, "error": error_msg}
+
+                if isinstance(predictions, list) and len(predictions) > 0:
+                    result = predictions[0]
+                    while isinstance(result, list) and len(result) > 0:
+                        result = result[0]
+                else:
+                    result = predictions
+
+                content_text = None
+                if isinstance(result, dict):
+                    if "candidates" in result and result["candidates"]:
+                        candidate = result["candidates"][0]
+                        content_parts = candidate.get("content", {}).get(
+                            "parts"
+                        ) or candidate.get("content", [])
+                        if isinstance(content_parts, list):
+                            text_parts = [
+                                p.get("text")
+                                for p in content_parts
+                                if isinstance(p, dict) and p.get("text")
+                            ]
+                            content_text = (
+                                "\n".join([t for t in text_parts if t])
+                                if text_parts
+                                else None
+                            )
+                    if not content_text:
+                        content_text = (
+                            result.get("content")
+                            or result.get("text")
+                            or result.get("message", {}).get("content")
+                            or result.get("choices", [{}])[0]
+                            .get("message", {})
+                            .get("content")
+                        )
+                elif isinstance(result, str):
+                    content_text = result
 
             if not content_text:
                 logger.error("❌ No content found in MedGemma response")

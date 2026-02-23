@@ -28,6 +28,9 @@ from .embeddings import (
     ClinicalEntityEmbedding,
 )
 
+# Medical ID models
+from .medical_id import MedicalIDCard, TemporaryMedicalSummary
+
 __all__ = [
     "Base",
     "User",
@@ -51,4 +54,7 @@ __all__ = [
     "DocumentEmbedding",
     "TimelineEventEmbedding",
     "ClinicalEntityEmbedding",
+    # Medical ID
+    "MedicalIDCard",
+    "TemporaryMedicalSummary",
 ]

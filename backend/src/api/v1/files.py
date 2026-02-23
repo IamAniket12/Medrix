@@ -1,6 +1,7 @@
 """File serving endpoints."""
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import RedirectResponse
 from google.cloud import storage
 from google.oauth2 import service_account
 from datetime import timedelta
@@ -73,12 +74,8 @@ async def get_file_url(file_path: str):
             method="GET",
         )
 
-        return {
-            "success": True,
-            "url": url,
-            "expires_in": 3600,  # seconds
-            "file_path": file_path,
-        }
+        # Redirect to the signed URL so the PDF opens directly
+        return RedirectResponse(url=url, status_code=302)
 
     except HTTPException:
         raise
