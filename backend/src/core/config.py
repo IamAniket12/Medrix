@@ -2,6 +2,7 @@
 Core configuration and settings for the FastAPI application.
 """
 
+import json
 from typing import Optional
 from pydantic_settings import BaseSettings
 from functools import lru_cache
@@ -24,7 +25,10 @@ class Settings(BaseSettings):
     google_cloud_project: str = "medrix-medgemma"
     vertex_ai_location: str = "europe-west4"
     medgemma_endpoint_id: str = "mg-endpoint-3c8c9ae8-c8f7-4f75-ac46-b4779dc43924"
+    # Path to service account JSON file (local dev)
     google_application_credentials: Optional[str] = None
+    # Raw JSON content of service account key (Railway / cloud deployments)
+    google_application_credentials_json: Optional[str] = None
 
     # Colab / generic HTTP MedGemma endpoint (overrides Vertex AI when set)
     # e.g. https://xxxx.ngrok-free.app  (printed by colab_medgemma_deploy.py)
@@ -67,16 +71,31 @@ settings = get_settings()
 
 def get_gcp_credentials():
     """
-    Load Google Cloud service-account credentials from the path in settings.
-    Returns None if no path is configured (ADC / metadata-server will be used).
+    Load Google Cloud service-account credentials.
+
+    Priority:
+    1. GOOGLE_APPLICATION_CREDENTIALS_JSON  — raw JSON string (Railway/cloud)
+    2. GOOGLE_APPLICATION_CREDENTIALS       — path to JSON file (local dev)
+    3. None                                 — fall back to ADC / metadata server
     """
-    if not settings.google_application_credentials:
-        return None
     from google.oauth2 import service_account
 
-    return service_account.Credentials.from_service_account_file(
-        settings.google_application_credentials
-    )
+    # Option 1: JSON content provided directly (preferred for Railway)
+    if settings.google_application_credentials_json:
+        try:
+            info = json.loads(settings.google_application_credentials_json)
+            return service_account.Credentials.from_service_account_info(info)
+        except Exception as e:
+            print(f"[GCP] Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON: {e}")
+
+    # Option 2: Path to a local JSON file
+    if settings.google_application_credentials:
+        return service_account.Credentials.from_service_account_file(
+            settings.google_application_credentials
+        )
+
+    # Option 3: Application Default Credentials (ADC)
+    return None
 
 
 _vertex_ai_initialized = False
