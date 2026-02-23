@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     cors_origins: list = [
         "http://localhost:3000",
         "http://localhost:3001",
+        "https://medrix.netlify.app",
         "https://*.netlify.app",
         "https://*.netlify.com",
     ]
