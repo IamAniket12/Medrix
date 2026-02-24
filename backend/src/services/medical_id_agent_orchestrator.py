@@ -71,7 +71,7 @@ class CriticalAllergyInfo(BaseModel):
 
     allergen: str
     reaction: Optional[str] = None
-    severity: str  # Should be severe or life-threatening
+    severity: Optional[str] = None  # Severity level (if documented)
     priority_score: float = Field(ge=0, le=1, description="0-1 priority for display")
 
 
@@ -458,14 +458,13 @@ class MedicalIDAgentOrchestrator:
                 .all()
             )
 
-            # Query ALL allergies (severe and life-threatening)
+            # Query ALL active allergies (severity filter removed - all allergies matter in emergencies)
             critical_allergies = (
                 db.query(ClinicalAllergy)
                 .filter(
                     ClinicalAllergy.user_id == user_id,
                     ClinicalAllergy.deleted_at.is_(None),
                     ClinicalAllergy.is_active == True,
-                    ClinicalAllergy.severity.in_(["severe", "life-threatening"]),
                 )
                 .all()
             )
@@ -494,7 +493,8 @@ class MedicalIDAgentOrchestrator:
                     {
                         "allergen": a.allergen,
                         "reaction": a.reaction,
-                        "severity": a.severity,
+                        "severity": a.severity
+                        or "unknown",  # Default to 'unknown' if not documented
                         "priority_score": 1.0,  # All allergies are critical
                     }
                     for a in critical_allergies
