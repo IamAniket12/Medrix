@@ -1067,7 +1067,9 @@ RULES:
             import httpx
 
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
+                async with httpx.AsyncClient(
+                    timeout=900.0
+                ) as client:  # 15 min timeout for quick summary generation
                     print(
                         f"  → [MedicalID] Sending text-only request to {self._http_url}/predict"
                     )

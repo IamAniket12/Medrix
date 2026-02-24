@@ -753,9 +753,10 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                         ParagraphStyle(
                             "Brand",
                             parent=styles["Normal"],
-                            fontSize=13,
+                            fontSize=15,
                             fontName="Helvetica-Bold",
                             textColor=C_ORANGE,
+                            letterSpacing=1.5,
                         ),
                     ),
                     Paragraph(
@@ -771,14 +772,15 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                 ],
                 [
                     Paragraph(
-                        "Medical Summary for Your Doctor",
+                        "Medical Summary",
                         ParagraphStyle(
                             "DocTitle",
                             parent=styles["Normal"],
-                            fontSize=18,
+                            fontSize=22,
                             fontName="Helvetica-Bold",
                             textColor=C_WHITE,
-                            spaceAfter=0,
+                            spaceAfter=2,
+                            leading=26,
                         ),
                     ),
                     Paragraph(
@@ -786,12 +788,26 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                         ParagraphStyle(
                             "PatientNameHdr",
                             parent=styles["Normal"],
-                            fontSize=14,
+                            fontSize=15,
                             fontName="Helvetica-Bold",
-                            textColor=C_ORANGE,
+                            textColor=C_ORANGE_LT,
                             alignment=TA_RIGHT,
                         ),
                     ),
+                ],
+                [
+                    Paragraph(
+                        "<i>FOR HEALTHCARE PROVIDER USE ONLY</i>",
+                        ParagraphStyle(
+                            "Subtitle",
+                            parent=styles["Normal"],
+                            fontSize=9,
+                            fontName="Helvetica-Oblique",
+                            textColor=C_ORANGE_LT,
+                            spaceAfter=0,
+                        ),
+                    ),
+                    Paragraph("", styles["Normal"]),
                 ],
             ]
             header_tbl = Table(header_rows, colWidths=[4.0 * inch, 2.5 * inch])
@@ -800,11 +816,12 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                     [
                         ("BACKGROUND", (0, 0), (-1, -1), C_NAVY),
                         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                        ("TOPPADDING", (0, 0), (-1, -1), 10),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                        ("TOPPADDING", (0, 0), (-1, 1), 10),
+                        ("BOTTOMPADDING", (0, 2), (-1, 2), 10),
+                        ("TOPPADDING", (0, 2), (-1, 2), 4),
                         ("LEFTPADDING", (0, 0), (-1, -1), 14),
                         ("RIGHTPADDING", (0, 0), (-1, -1), 14),
-                        ("SPAN", (0, 0), (0, 0)),
+                        ("SPAN", (0, 2), (-1, 2)),  # Span subtitle across both columns
                     ]
                 )
             )
@@ -941,7 +958,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                 story.append(Spacer(1, 0.2 * inch))
 
             # ── PATIENT INFORMATION ───────────────────────────────────────
-            story.append(section_header("PATIENT INFORMATION", ""))
+            story.append(section_header("PATIENT INFORMATION", "👤"))
             story.append(Spacer(1, 0.05 * inch))
 
             dob_str = str(summary_data.date_of_birth or "—")
@@ -1047,18 +1064,26 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
             story.append(Spacer(1, 0.18 * inch))
 
             # ── MEDICATIONS ───────────────────────────────────────────────
-            story.append(section_header("CURRENT MEDICATIONS", ""))
+            story.append(section_header("CURRENT MEDICATIONS", "💊"))
             story.append(Spacer(1, 0.05 * inch))
             if summary_data.all_medications and len(summary_data.all_medications) > 0:
-                active_meds = [
-                    m
-                    for m in summary_data.all_medications
-                    if getattr(m, "is_active", True)
-                ]
+                # Deduplicate medications by name (case-insensitive)
+                seen_meds = {}
+                for m in summary_data.all_medications:
+                    med_name_lower = str(m.name).lower().strip()
+                    if med_name_lower not in seen_meds:
+                        seen_meds[med_name_lower] = m
+                    else:
+                        # Keep the active one if duplicate
+                        if getattr(m, "is_active", False) and not getattr(
+                            seen_meds[med_name_lower], "is_active", False
+                        ):
+                            seen_meds[med_name_lower] = m
+
+                deduped_meds = list(seen_meds.values())
+                active_meds = [m for m in deduped_meds if getattr(m, "is_active", True)]
                 inactive_meds = [
-                    m
-                    for m in summary_data.all_medications
-                    if not getattr(m, "is_active", True)
+                    m for m in deduped_meds if not getattr(m, "is_active", True)
                 ]
                 for group_label, group, bg in [
                     ("Active", active_meds, C_WHITE),
@@ -1208,9 +1233,17 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
             story.append(Spacer(1, 0.15 * inch))
 
             # ── MEDICAL CONDITIONS ────────────────────────────────────────
-            story.append(section_header("MEDICAL CONDITIONS", ""))
+            story.append(section_header("MEDICAL CONDITIONS", "🏥"))
             story.append(Spacer(1, 0.05 * inch))
             if summary_data.all_conditions and len(summary_data.all_conditions) > 0:
+                # Deduplicate conditions by name (case-insensitive)
+                seen_conditions = {}
+                for c in summary_data.all_conditions:
+                    cond_name_lower = str(c.name).lower().strip()
+                    if cond_name_lower not in seen_conditions:
+                        seen_conditions[cond_name_lower] = c
+
+                deduped_conditions = list(seen_conditions.values())
                 cond_rows = [
                     [
                         Paragraph(
@@ -1245,7 +1278,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                         ),
                     ]
                 ]
-                for i, cond in enumerate(summary_data.all_conditions):
+                for i, cond in enumerate(deduped_conditions):
                     try:
                         status_val = str(getattr(cond, "status", None) or "—")
                         severity_val = str(getattr(cond, "severity", None) or "—")
@@ -1300,7 +1333,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
             story.append(Spacer(1, 0.15 * inch))
 
             # ── ALLERGIES ─────────────────────────────────────────────────
-            story.append(section_header("ALLERGIES & ADVERSE REACTIONS", ""))
+            story.append(section_header("ALLERGIES & ADVERSE REACTIONS", "⚠️"))
             story.append(Spacer(1, 0.05 * inch))
             if summary_data.all_allergies and len(summary_data.all_allergies) > 0:
                 allergy_rows = [
@@ -1406,7 +1439,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
 
             # ── VITAL SIGNS ───────────────────────────────────────────────
             if summary_data.all_vitals and len(summary_data.all_vitals) > 0:
-                story.append(section_header("VITAL SIGNS", ""))
+                story.append(section_header("VITAL SIGNS", "❤️"))
                 story.append(Spacer(1, 0.05 * inch))
                 vital_rows = [
                     [
@@ -1421,7 +1454,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                             ),
                         ),
                         Paragraph(
-                            "<b>BP</b>",
+                            "<b>Blood Pressure</b>",
                             ParagraphStyle(
                                 "VH",
                                 parent=styles["Normal"],
@@ -1431,7 +1464,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                             ),
                         ),
                         Paragraph(
-                            "<b>HR</b>",
+                            "<b>Heart Rate</b>",
                             ParagraphStyle(
                                 "VH",
                                 parent=styles["Normal"],
@@ -1441,7 +1474,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                             ),
                         ),
                         Paragraph(
-                            "<b>Temp</b>",
+                            "<b>Temperature</b>",
                             ParagraphStyle(
                                 "VH",
                                 parent=styles["Normal"],
@@ -1451,7 +1484,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                             ),
                         ),
                         Paragraph(
-                            "<b>SpO2</b>",
+                            "<b>Oxygen Sat.</b>",
                             ParagraphStyle(
                                 "VH",
                                 parent=styles["Normal"],
@@ -1461,7 +1494,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                             ),
                         ),
                         Paragraph(
-                            "<b>Wt / Ht</b>",
+                            "<b>Weight / Height</b>",
                             ParagraphStyle(
                                 "VH",
                                 parent=styles["Normal"],
@@ -1627,7 +1660,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
 
             # ── LAB RESULTS ───────────────────────────────────────────────
             if summary_data.all_lab_results and len(summary_data.all_lab_results) > 0:
-                story.append(section_header("LAB RESULTS", ""))
+                story.append(section_header("LAB RESULTS", "🔬"))
                 story.append(Spacer(1, 0.05 * inch))
                 lab_rows = [
                     [
@@ -1786,7 +1819,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
 
             # ── PROCEDURES ────────────────────────────────────────────────
             if hasattr(summary_data, "all_procedures") and summary_data.all_procedures:
-                story.append(section_header("PROCEDURES", ""))
+                story.append(section_header("PROCEDURES", "🏥"))
                 story.append(Spacer(1, 0.05 * inch))
                 for proc in summary_data.all_procedures:
                     try:
@@ -1804,7 +1837,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
 
             # ── IMMUNIZATIONS ─────────────────────────────────────────────
             if summary_data.immunizations and len(summary_data.immunizations) > 0:
-                story.append(section_header("IMMUNIZATIONS", ""))
+                story.append(section_header("IMMUNIZATIONS", "💉"))
                 story.append(Spacer(1, 0.05 * inch))
                 for imm in summary_data.immunizations:
                     try:
@@ -1830,7 +1863,7 @@ Respond ONLY with plain text (no JSON, no markdown, no code blocks). Start direc
                 and summary_data.emergency_contact
             )
             if has_pcp or has_ec:
-                story.append(section_header("PROVIDER & EMERGENCY CONTACT", ""))
+                story.append(section_header("PROVIDER & EMERGENCY CONTACT", "📞"))
                 story.append(Spacer(1, 0.05 * inch))
                 if has_pcp:
                     story.append(

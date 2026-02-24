@@ -1,12 +1,14 @@
 """User authentication routes — email-only login / register."""
 
 import uuid
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from src.core.database import get_db
 from src.models.user import User
+from src.utils.dummy_demographics import generate_dummy_demographics
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -56,6 +58,7 @@ async def login(payload: LoginRequest, db: Session = Depends(get_db)):
 async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     """
     Create a new user with name + email.
+    Also generates dummy demographic data for testing purposes.
     Returns 409 if email is already registered.
     """
     existing = db.query(User).filter(User.email == payload.email).first()
@@ -65,14 +68,37 @@ async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
             detail="An account with this email already exists. Please log in.",
         )
 
+    # Generate dummy demographics for testing
+    print(f"🎲 Generating dummy demographics for {payload.name}...")
+    demographics = generate_dummy_demographics(user_name=payload.name)
+
+    # Add a small delay to simulate processing (for progress bar visibility)
+    await asyncio.sleep(2.0)
+
     user = User(
         id=str(uuid.uuid4()),
         email=payload.email,
         name=payload.name.strip(),
+        # Add demographic data
+        date_of_birth=demographics["date_of_birth"],
+        blood_type=demographics["blood_type"],
+        gender=demographics["gender"],
+        phone=demographics["phone"],
+        address=demographics["address"],
+        emergency_contact_name=demographics["emergency_contact_name"],
+        emergency_contact_phone=demographics["emergency_contact_phone"],
+        primary_care_physician=demographics["primary_care_physician"],
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    print(f"✅ User created with dummy demographics:")
+    print(f"   - DOB: {user.date_of_birth}")
+    print(f"   - Blood Type: {user.blood_type}")
+    print(f"   - Gender: {user.gender}")
+    print(f"   - Emergency Contact: {user.emergency_contact_name}")
+
     return user
 
 

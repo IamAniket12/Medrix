@@ -142,8 +142,8 @@ class MedGemmaService:
 
         payload = {"instances": instances}
         try:
-            # Increased timeout to 300s for HPC with 8192 max tokens
-            async with httpx.AsyncClient(timeout=300.0) as client:
+            # Increased timeout to 900s (15 min) for HPC with 8192 max tokens
+            async with httpx.AsyncClient(timeout=900.0) as client:
                 logger.info(
                     f"[MedGemma HTTP] Sending request with {len(instances)} instance(s)"
                 )

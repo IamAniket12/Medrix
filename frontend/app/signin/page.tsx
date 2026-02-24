@@ -10,6 +10,7 @@ export default function SignInPage() {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingStage, setLoadingStage] = useState('');
   const [error, setError] = useState('');
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
@@ -33,6 +34,7 @@ export default function SignInPage() {
     if (mode === 'register' && !name.trim()) { setError('Please enter your name.'); return; }
 
     setLoading(true);
+    
     try {
       const API_BASE = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`;
       const endpoint = mode === 'login'
@@ -42,6 +44,16 @@ export default function SignInPage() {
       const body = mode === 'login'
         ? { email: email.trim() }
         : { email: email.trim(), name: name.trim() };
+
+      // Show different stages for registration
+      if (mode === 'register') {
+        setLoadingStage('Creating your account...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setLoadingStage('Generating demographic data...');
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } else {
+        setLoadingStage('Signing in...');
+      }
 
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -58,9 +70,15 @@ export default function SignInPage() {
           setMode('register');
           setError('No account found. Please fill in your name to create one.');
           setLoading(false);
+          setLoadingStage('');
           return;
         }
         throw new Error(data.detail || 'Something went wrong.');
+      }
+
+      if (mode === 'register') {
+        setLoadingStage('Setting up your profile...');
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       // Save user to localStorage
@@ -71,6 +89,7 @@ export default function SignInPage() {
       setError(err.message || 'An error occurred. Please try again.');
     } finally {
       setLoading(false);
+      setLoadingStage('');
     }
   };
 
@@ -226,6 +245,47 @@ export default function SignInPage() {
               </div>
             )}
 
+            {loading && loadingStage && (
+              <div style={{
+                padding: '14px 16px',
+                background: 'rgba(249,115,22,0.06)',
+                border: '1px solid rgba(249,115,22,0.2)',
+                borderRadius: '10px',
+                fontSize: '13px',
+                color: '#ea580c',
+                fontWeight: 600,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ 
+                    width: '14px', 
+                    height: '14px', 
+                    border: '2px solid rgba(249,115,22,0.3)', 
+                    borderTop: '2px solid #f97316', 
+                    borderRadius: '50%', 
+                    animation: 'spin 0.8s linear infinite' 
+                  }} />
+                  <span>{loadingStage}</span>
+                </div>
+                <div style={{
+                  width: '100%',
+                  height: '4px',
+                  background: 'rgba(249,115,22,0.15)',
+                  borderRadius: '999px',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    height: '100%',
+                    background: 'linear-gradient(90deg, #f97316, #fb7185)',
+                    borderRadius: '999px',
+                    animation: 'progress 1.5s ease-in-out infinite',
+                  }} />
+                </div>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={loading}
@@ -246,7 +306,7 @@ export default function SignInPage() {
               {loading ? (
                 <>
                   <div style={{ width: '16px', height: '16px', border: '2px solid rgba(255,255,255,0.4)', borderTop: '2px solid white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                  {mode === 'login' ? 'Signing in…' : 'Creating account…'}
+                  {loadingStage || (mode === 'login' ? 'Signing in…' : 'Creating account…')}
                 </>
               ) : (
                 mode === 'login' ? 'Sign In →' : 'Create Account →'
@@ -268,6 +328,11 @@ export default function SignInPage() {
 
       <style jsx>{`
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes progress {
+          0% { width: 0%; }
+          50% { width: 70%; }
+          100% { width: 100%; }
+        }
       `}</style>
     </div>
   );
