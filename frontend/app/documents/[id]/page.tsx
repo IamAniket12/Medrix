@@ -46,19 +46,29 @@ export default function DocumentDetailPage() {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<string>('summary');
   const [showPreview, setShowPreview] = useState(false);
+  const [user, setUser] = useState<{ id: string; name: string; email: string } | null | undefined>(undefined);
 
   useEffect(() => {
-    if (documentId) {
+    const raw = localStorage.getItem('medrix_user');
+    setUser(raw ? JSON.parse(raw) : null);
+  }, []);
+
+  useEffect(() => {
+    if (documentId && user !== undefined) {
+      if (!user) {
+        router.push('/signin');
+        return;
+      }
       fetchDocumentDetails();
     }
-  }, [documentId]);
+  }, [documentId, user]);
 
   const fetchDocumentDetails = async () => {
     try {
       setLoading(true);
       const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`;
       const response = await fetch(
-        `${API_BASE_URL}/clinical/documents/demo_user_001/${documentId}`
+        `${API_BASE_URL}/clinical/documents/${user?.id}/${documentId}`
       );
 
       if (!response.ok) {

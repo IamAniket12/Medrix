@@ -4,7 +4,15 @@ Document upload and analysis API endpoints (v1) - Multi-Agent System.
 
 import asyncio
 from datetime import datetime
-from fastapi import APIRouter, BackgroundTasks, UploadFile, File, HTTPException, Depends
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    UploadFile,
+    File,
+    Form,
+    HTTPException,
+    Depends,
+)
 from sqlalchemy.orm import Session
 
 from src.core.config import Settings
@@ -56,6 +64,7 @@ async def get_processing_progress(job_id: str):
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    user_id: str = Form(...),
     settings: Settings = Depends(get_settings_dependency),
     db: Session = Depends(get_db),
 ):
@@ -132,6 +141,7 @@ async def upload_document(
             file_size=file_size,
             upload_result=upload_result,
             settings=settings,
+            user_id=user_id,
         )
 
         # Step 4: Return immediately so the frontend can start polling
@@ -169,6 +179,7 @@ async def _run_agent_pipeline(
     file_size: int,
     upload_result: dict,
     settings: Settings,
+    user_id: str,
 ):
     """
     Background task: run 4-agent pipeline and save results to DB.
@@ -180,7 +191,6 @@ async def _run_agent_pipeline(
 
     db = SessionLocal()
     try:
-        user_id = "demo_user_001"  # TODO: Replace with actual auth
         document_id_uuid = uuid.uuid4()
 
         # Ensure user exists
